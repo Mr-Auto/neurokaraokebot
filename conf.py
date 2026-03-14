@@ -1,5 +1,3 @@
-# User id of the owner, allowed to use the !restart command
-OWNER_ID = 0
 # Channels that the !randomsong is allowed in
 ALLOWED_CHANNELS = (0,)
 
