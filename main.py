@@ -1,5 +1,5 @@
 ﻿import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 import logging
 import io
 import math
@@ -217,6 +217,7 @@ class MusicPlayer:
     def __init__(self):
         self.cache = deque()
         self.requests_cache = deque()
+        self.alone_counter = 0
         self.update_status = True
         self.refill_task: asyncio.Future = None
         data = fetch_json_data(RANDOM_API)
@@ -297,6 +298,10 @@ class MusicCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.music_players = {}
+        self.check_alone_status.start()
+
+    def cog_unload(self):
+        self.check_alone_status.cancel()
 
     @commands.command(priority=1)
     async def karaokehere(self, ctx):
@@ -700,6 +705,33 @@ class MusicCog(commands.Cog):
                 else:
                     await after.channel.send(f"🔊 {emote(EMOTES.HAPPY)}")
                     mp.current_song.set_pause(False)
+        else:
+            if after.channel is not None:
+                vc = member.guild.voice_client
+                if not vc:
+                    return
+                mp = self.music_players.get(member.guild.id)
+                if mp and vc.channel.id == after.channel.id:
+                    mp.alone_counter = 0
+
+    @tasks.loop(minutes=1.0)
+    async def check_alone_status(self):
+        await self.bot.wait_until_ready()
+        for guild in self.bot.guilds:
+            mp = self.music_players.get(guild.id)
+            if not mp:
+                continue
+            vc = guild.voice_client
+            if not vc or vc.is_paused():
+                continue
+            # includes the bot itself
+            if len(vc.channel.members) < 2:
+                mp.alone_counter += 1
+                if mp.alone_counter > 3:
+                    vc.pause()
+                    await vc.channel.send(
+                        f"No one around {emote(EMOTES.SAD)}\nPaused ⏸️"
+                    )
 
 
 class MyBot(commands.Bot):
