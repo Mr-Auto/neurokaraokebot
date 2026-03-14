@@ -1,4 +1,4 @@
-﻿import discord
+import discord
 from discord.ext import commands
 import logging
 import io
@@ -75,7 +75,7 @@ def fetch_json_data(url: str, get=None, post=None, retries=3):
             response.raise_for_status()
             return response.json()
         except (requests.exceptions.RequestException, ValueError) as e:
-            log.info(f"Attempt {i+1} failed: {e}")
+            log.info(f"Attempt {i + 1} failed: {e}")
             if i < retries - 1:
                 asyncio.sleep(2)
             else:
@@ -611,11 +611,13 @@ class MusicCog(commands.Cog):
         mp = self.get_music_player(vc)
         vc.play(
             mp.current_song.playback,
-            after=lambda e: log.error(
-                f"Voice playback error: {e}\n(GuildID: {vc.guild.id})", exc_info=e
-            )
-            if e
-            else self.bot.loop.create_task(self.next_song(vc.guild.id)),
+            after=lambda e: (
+                log.error(
+                    f"Voice playback error: {e}\n(GuildID: {vc.guild.id})", exc_info=e
+                )
+                if e
+                else self.bot.loop.create_task(self.next_song(vc.guild.id))
+            ),
         )
         if self.updatestatus:
             song_name = mp.current_song.song_name()
