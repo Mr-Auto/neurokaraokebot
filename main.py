@@ -243,12 +243,17 @@ class MusicPlayer:
         return duration
 
     def load_next_song(self):
-        effects_board = self.current_song.playback.effects_board
+        effects_board = (
+            self.current_song.playback.effects_board
+            if self.current_song.playback
+            else Pedalboard([])
+        )
         if len(self.requests_cache) > 0:
             self.current_song = self.requests_cache.popleft()
         else:
             self.current_song = self.cache.popleft()
-        self.current_song.playback.effects_board = effects_board
+        if self.current_song.playback:
+            self.current_song.playback.effects_board = effects_board
 
     def get_next_song(self) -> Song:
         if len(self.requests_cache) > 0:
@@ -332,13 +337,14 @@ class MusicCog(commands.Cog):
         """Reset the bot and reconnect to this VC (kills the queue)"""
         if not self.cmd_verify(ctx):
             return
-        mb = self.get_music_player(ctx)
-        if mb.current_song:
-            mb.current_song.playback.set_pause(True)
+        mp = self.get_music_player(ctx)
+        self.music_players[ctx.guild.id] = None
+        if mp and mp.current_song.playback:
+            mp.current_song.playback.set_pause(True)
+
         vc = ctx.voice_client
         channel = vc.channel
         await ctx.reply(f"Rebooting voice connection... {emote(EMOTES.LOADING)}")
-        self.reset()
         await vc.disconnect()
         await asyncio.sleep(2)
         await channel.connect(reconnect=False)
@@ -540,12 +546,6 @@ class MusicCog(commands.Cog):
         if not self.cmd_verify(ctx):
             return
         mp = self.get_music_player(ctx)
-        if not mp or not mp.current_song:
-            await ctx.reply(f"Error: no playback {emote(EMOTES.SAD)}")
-            log.warning(
-                f'resetmodifiers: no active playback? Server: "{ctx.guild.name}"'
-            )
-
         mp.current_song.clear_modifiers()
         await ctx.reply(f"Modifiers reset, volume 100% {emote(EMOTES.OK)}")
 
@@ -597,14 +597,13 @@ class MusicCog(commands.Cog):
         start_wait = time.perf_counter()
 
         new_mp = MusicPlayer()
+        song_name = new_mp.current_song.song_name()
         self.music_players[ctx.guild.id] = new_mp
 
         # sleep for about 3s before starting, include the download and processing in the wait
         remaining = max(0, 3 - (time.perf_counter() - start_wait))
         await asyncio.sleep(remaining)
         await self.play_current(vc)
-
-        song_name = new_mp.current_song.song_name()
         await ctx.send(f"Now playing `{song_name}` {emote(EMOTES.JAM)}")
         new_mp.refill()
 
@@ -626,7 +625,8 @@ class MusicCog(commands.Cog):
         log.info(f"next_song: attempt (GuildID: {guild_id})")
         vc = self.bot.get_guild(guild_id).voice_client
         mp = self.music_players.get(guild_id)
-        if not vc or not mp.current_song:
+        # Do not try to load next song if not in vc or no player (probably restarting)
+        if not vc or not mp:
             return
         log.info(f"next_song: playing next song (GuildID: {guild_id})")
         if len(mp.requests_cache) == 0 and len(mp.cache) == 0:
@@ -700,9 +700,7 @@ class MyBot(commands.Bot):
                 log.info(f"Disconnected from voice channel '{before.channel}'")
                 guild_id = before.channel.guild.id
                 mp = self.music_cog.music_players.get(guild_id)
-                if not mp:
-                    return
-                if mp.current_song:
+                if mp and mp.current_song.playback:
                     log.info("Detected active playback, attempting to resume")
                     mp.current_song.playback.set_pause(True)
                     await asyncio.sleep(1)
@@ -714,6 +712,8 @@ class MyBot(commands.Bot):
             elif before.mute != after.mute:
                 guild_id = before.channel.guild.id
                 mp = self.music_cog.music_players.get(guild_id)
+                if not mp:
+                    return
                 if after.mute:
                     await after.channel.send(f"🔇 {emote(EMOTES.SAD)}")
                     mp.current_song.set_pause(True)
