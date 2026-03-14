@@ -1,4 +1,4 @@
-import discord
+﻿import discord
 from discord.ext import commands
 import logging
 import io
@@ -63,15 +63,12 @@ def parse_cover_by(cover_str: str) -> CoverBy:
     elif "Evil" in cover_str:
         return CoverBy.Evil
     else:
-        raise ValueError("Unknown cover")
+        log.error(f"Could not parse cover string {cover_str}")
+        raise ValueError("Unknown cover string")
 
 
 def emote(emote: EMOTES) -> str:
     return random.choice(emote.value)
-
-
-def clamp(val, minv, maxv):
-    return minv if val < minv else maxv if val > maxv else val
 
 
 def is_number(s: str) -> bool:
@@ -135,13 +132,14 @@ class PCMSource(discord.AudioSource):
         self.BYTES_PER_SECOND = (
             192000  # 48000 * 2 * (16 // 8) # 48KHz, 2 channels, 16bit depth
         )
+        self.bytes_per_20ms = 20 * int(self.BYTES_PER_SECOND / 1000)
 
     def read(self):
         """Discord calls this every 20ms to get the next chunk of audio."""
         if self.paused:
-            return b"\x00" * 3840
+            return b"\x00" * self.bytes_per_20ms
         # Read exactly 20ms of audio
-        chunk = self.buffer.read(3840)
+        chunk = self.buffer.read(self.bytes_per_20ms)
         if not chunk:
             # ends playback
             return b""
@@ -153,8 +151,8 @@ class PCMSource(discord.AudioSource):
             final_pcm = (processed_float * 32767.0).astype(numpy.int16)
             chunk = final_pcm.T.tobytes()
 
-        if len(chunk) < 3840:
-            padding = 3840 - len(chunk)
+        if len(chunk) < self.bytes_per_20ms:
+            padding = self.bytes_per_20ms - len(chunk)
             chunk += b"\x00" * padding
         return chunk
 
@@ -184,7 +182,7 @@ class PCMSource(discord.AudioSource):
 
 
 class Song:
-    def __init__(self, playback: PCMSource, json_data, requested_by: str = None):
+    def __init__(self, playback: PCMSource, json_data, requested_by: str | None = None):
         self.playback = playback
         self.song_info = json_data
         self.requested_by = requested_by
@@ -226,7 +224,7 @@ class Song:
     def get_id(self) -> int:
         return self.song_info["id"]
 
-    def remaning(self) -> int:
+    def remaning(self) -> int | None:
         return self.playback.remaining() if self.playback else None
 
     def clear_modifiers(self):
@@ -275,11 +273,13 @@ class MusicPlayer:
         if self.current_song.playback:
             self.current_song.playback.effects_board = effects_board
 
-    def get_next_song(self) -> Song:
+    def get_next_song(self) -> Song | None:
         if len(self.requests_cache) > 0:
             return self.requests_cache[0]
         elif len(self.cache) > 0:
             return self.cache[0]
+        else:
+            return None
 
     def refill(self, force_await=False):
         if force_await:
@@ -376,7 +376,7 @@ class MusicCog(commands.Cog):
         if not self.cmd_verify(ctx):
             return
         mp = self.get_music_player(ctx)
-        vol = clamp(vol, 0, 300.0)
+        vol = numpy.clip(vol, 0, 300.0)
         new_db = 0
         if vol != 100:
             new_db = 20 * math.log10(vol / 100)
@@ -409,7 +409,7 @@ class MusicCog(commands.Cog):
             )
             return
 
-        gain_db = clamp(gain_db, -100.0, 20.0)
+        gain_db = numpy.clip(gain_db, -100.0, 20.0)
         low_shelf = None
         for p in board:
             if isinstance(p, LowShelfFilter):
@@ -433,8 +433,10 @@ class MusicCog(commands.Cog):
             return
         next_song = self.get_music_player(ctx).get_next_song()
         ctx.voice_client.stop()
-
-        await ctx.reply(f"Skipping current song, next: `{next_song.song_name()}`")
+        if next_song:
+            await ctx.reply(f"Skipping current song, next: `{next_song.song_name()}`")
+        else:
+            await ctx.reply("Skipping current song, no more songs in queue")
 
     @commands.command(priority=6)
     async def song(self, ctx):
@@ -443,7 +445,11 @@ class MusicCog(commands.Cog):
             return
         mp = self.get_music_player(ctx)
         requested_by = mp.current_song.requested_by or self.bot.user.name
-        song_end = int(time.time()) + mp.current_song.remaning()
+        song_remaining = mp.current_song.remaning()
+        if song_remaining is None:
+            log.error("MusicPlayer: No playback for the current song")
+            return
+        song_end = int(time.time()) + song_remaining
         footer = f'Requested by "{requested_by}"'
         note = f"Ends <t:{song_end}:R>"
         embed = self.get_song_embed(mp.current_song.song_info, note, footer)
@@ -476,7 +482,11 @@ class MusicCog(commands.Cog):
             return
 
         requested_by = next_song.requested_by or self.bot.user.name
-        song_end = int(time.time()) + mp.current_song.remaning() + 2
+        song_remaining = mp.current_song.remaning()
+        if song_remaining is None:
+            log.error("MusicPlayer: No playback for the current song")
+            return
+        song_end = int(time.time()) + song_remaining + 2
         footer = f'Requested by "{requested_by}"'
         note = f"Playing in: <t:{song_end}:R>"
         embed = self.get_song_embed(next_song.song_info, note, footer)
@@ -529,7 +539,7 @@ class MusicCog(commands.Cog):
         # {"sortDesc":false,"genreIds":null,"themeIds":null,"moodIds":null,"artistIds":null,
         # "coverArtistIds":null,"languageIds":null,"energyLevel":null,"tempo":null,"key":null,"karaokeStart":null,"karaokeEnd":null}
         response = fetch_json_data(SEARCH_API, post=data)
-        if not response or not "items" in response:
+        if not response or "items" not in response:
             await ctx.reply(f"Got empty request back {emote(EMOTES.SAD)}")
             return
 
@@ -538,13 +548,14 @@ class MusicCog(commands.Cog):
             await ctx.reply(f"No results for `{search}` {emote(EMOTES.SIDE_EYE)}")
             return
 
-        mp = self.get_music_player(ctx)
-        playing_in = (
-            int(time.time())
-            + mp.request_queue_duration()
-            + mp.current_song.remaning()
-            + 2
-        )
+        mp: MusicPlayer = self.get_music_player(ctx)
+
+        song_remaining = mp.current_song.remaning()
+        if song_remaining is None:
+            log.error("MusicPlayer: No playback for the current song")
+            return
+        playing_in = int(time.time()) + mp.request_queue_duration() + song_remaining + 2
+
         mp.requests_cache.append(Song(None, result_list[0], ctx.author.name))
         song_name = format_song_name(result_list[0])
         await ctx.reply(
@@ -672,7 +683,9 @@ class MusicCog(commands.Cog):
         await self.play_current(vc)
         mp.refill()
 
-    def get_song_embed(_, song_info, last_section: str = None, footer: str = None):
+    def get_song_embed(
+        _, song_info, last_section: str | None = None, footer: str | None = None
+    ):
 
         original_by = " & ".join(song_info["originalArtists"])
         date = datetime.fromisoformat(song_info["streamDate"]).strftime("%B %d, %Y")
