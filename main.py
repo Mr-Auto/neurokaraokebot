@@ -533,9 +533,14 @@ class MusicCog(commands.Cog):
     @commands.command(priority=7)
     async def updatestatus(self, ctx, update: bool):
         """Disable/enable bot updating VC status with song name"""
+        if not self.cmd_verify(ctx):
+            return
         if self.updatestatus != update:
             if update:
                 await ctx.reply(f"Status updates back ON {emote(EMOTES.OK)}")
+                mp = self.get_music_player(ctx)
+                song_name = mp.current_song.song_name()
+                await ctx.voice_client.channel.edit(status=song_name)
             else:
                 await ctx.reply(f"Status updates OFF {emote(EMOTES.NWELIV)}")
         self.updatestatus = update
