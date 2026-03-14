@@ -156,7 +156,7 @@ class PCMSource(discord.AudioSource):
         nbytes = self.buffer.getbuffer().nbytes
         return nbytes // self.BYTES_PER_SECOND
 
-    def remaning(self) -> int:
+    def remaining(self) -> int:
         total_size = self.buffer.getbuffer().nbytes
         current_pos = self.buffer.tell()
         remaining_bytes = total_size - current_pos
@@ -207,7 +207,7 @@ class Song:
         return self.song_info["id"]
 
     def remaning(self) -> int:
-        return self.playback.remaning() if self.playback else None
+        return self.playback.remaining() if self.playback else None
 
     def clear_modifiers(self):
         self.playback.effects_board = Pedalboard([])
