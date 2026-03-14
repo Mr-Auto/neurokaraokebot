@@ -275,6 +275,8 @@ class MusicPlayer:
 
     def _refill_queue(self):
         for item in islice(chain(self.requests_cache, self.cache), MAX_CACHE):
+            if item.playback:
+                continue
             song_url = STORAGE_URL + item.song_info["absolutePath"]
             item.playback = PCMSource(song_url)
             if not item.playback:
@@ -540,7 +542,7 @@ class MusicCog(commands.Cog):
                 await ctx.reply(f"Status updates back ON {emote(EMOTES.OK)}")
                 mp = self.get_music_player(ctx)
                 song_name = mp.current_song.song_name()
-                await ctx.voice_client.channel.edit(status=song_name)
+                await ctx.channel.edit(status=song_name)
             else:
                 await ctx.reply(f"Status updates OFF {emote(EMOTES.NWELIV)}")
         self.updatestatus = update
