@@ -13,6 +13,7 @@ class COLORS(IntEnum):
     NEURO = 0xFDE7D3
     EVIL = 0x8F0A0A
     VEDAL = 0x0A7908
+    TWINS = 0xB305AA
 
 
 # Emotes to be used in various messages

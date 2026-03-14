@@ -687,11 +687,11 @@ class MusicCog(commands.Cog):
             case CoverBy.Vedal:
                 color = COLORS.VEDAL
             case CoverBy.Twins:
-                pass
+                color = COLORS.TWINS
             case CoverBy.Neuro:
                 color = COLORS.NEURO
             case CoverBy.Evil:
-                color: COLORS = COLORS.EVIL
+                color = COLORS.EVIL
 
         play_count = song_info["playCount"]
         song_name = format_song_name(song_info)
