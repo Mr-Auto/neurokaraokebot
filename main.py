@@ -46,6 +46,26 @@ IMAGES_URL = "https://images.neurokaraoke.com"
 log = logging.getLogger("discord")
 
 
+class CoverBy(Enum):
+    Vedal = 1
+    Twins = 2
+    Neuro = 3
+    Evil = 4
+
+
+def parse_cover_by(cover_str: str) -> CoverBy:
+    if "Vedal" in cover_str:
+        return CoverBy.Vedal
+    elif "Neuro" in cover_str and "Evil" in cover_str:
+        return CoverBy.Twins
+    elif "Neuro" in cover_str:
+        return CoverBy.Neuro
+    elif "Evil" in cover_str:
+        return CoverBy.Evil
+    else:
+        raise ValueError("Unknown cover")
+
+
 def emote(emote: EMOTES) -> str:
     return random.choice(emote.value)
 
@@ -427,13 +447,20 @@ class MusicCog(commands.Cog):
         footer = f'Requested by "{requested_by}"'
         note = f"Ends <t:{song_end}:R>"
         embed = self.get_song_embed(mp.current_song.song_info, note, footer)
-        cover_by = " & ".join(mp.current_song.song_info["coverArtists"])
-        emot = EMOTES.JAM
-        if cover_by == "Evil":
-            emot = EMOTES.EVILJAM
-        elif cover_by == "Neuro" or cover_by == "Neuro v1" or cover_by == "Neuro v2":
-            emot = EMOTES.NEUROJAM
-        await ctx.reply(content=f"Playing right now {emote(emot)}", embed=embed)
+        cover_str = " & ".join(mp.current_song.song_info["coverArtists"])
+        cover_by = parse_cover_by(cover_str)
+        _emote = EMOTES.JAM
+        match cover_by:
+            case CoverBy.Vedal:
+                pass
+            case CoverBy.Twins:
+                pass
+            case CoverBy.Neuro:
+                _emote = EMOTES.NEUROJAM
+            case CoverBy.Evil:
+                _emote = EMOTES.EVILJAM
+
+        await ctx.reply(content=f"Playing right now {emote(_emote)}", embed=embed)
 
     @commands.command(priority=6)
     async def nextsong(self, ctx):
@@ -453,13 +480,19 @@ class MusicCog(commands.Cog):
         footer = f'Requested by "{requested_by}"'
         note = f"Playing in: <t:{song_end}:R>"
         embed = self.get_song_embed(next_song.song_info, note, footer)
-        cover_by = " & ".join(next_song.song_info["coverArtists"])
-        emot = EMOTES.JAM
-        if cover_by == "Evil":
-            emot = EMOTES.EVILJAM
-        elif cover_by == "Neuro" or cover_by == "Neuro v1" or cover_by == "Neuro v2":
-            emot = EMOTES.NEUROJAM
-        await ctx.reply(content=f"Next song: {emote(emot)}", embed=embed)
+        cover_str = " & ".join(next_song.song_info["coverArtists"])
+        cover_by = parse_cover_by(cover_str)
+        _emote = EMOTES.JAM
+        match cover_by:
+            case CoverBy.Vedal:
+                pass
+            case CoverBy.Twins:
+                pass
+            case CoverBy.Neuro:
+                _emote = EMOTES.NEUROJAM
+            case CoverBy.Evil:
+                _emote = EMOTES.EVILJAM
+        await ctx.reply(content=f"Next song: {emote(_emote)}", embed=embed)
 
     @commands.command(priority=5)
     async def queue(self, ctx):
@@ -640,22 +673,29 @@ class MusicCog(commands.Cog):
         mp.refill()
 
     def get_song_embed(_, song_info, last_section: str = None, footer: str = None):
-        cover_by = " & ".join(song_info["coverArtists"])
+
         original_by = " & ".join(song_info["originalArtists"])
         date = datetime.fromisoformat(song_info["streamDate"]).strftime("%B %d, %Y")
         minutes, seconds = divmod(song_info["duration"], 60)
         song_url = SONG_URL + song_info["id"]
+
+        cover_str = " & ".join(song_info["coverArtists"])
+        cover_by = parse_cover_by(cover_str)
+
         color = COLORS.EMBED_DEFAULT
-        if cover_by == "Evil":
-            color = COLORS.EVIL
-        elif cover_by == "Neuro" or cover_by == "Neuro v1" or cover_by == "Neuro v2":
-            color = COLORS.NEURO
-        elif "Vedal" in cover_by:
-            color = COLORS.VEDAL
+        match cover_by:
+            case CoverBy.Vedal:
+                color = COLORS.VEDAL
+            case CoverBy.Twins:
+                pass
+            case CoverBy.Neuro:
+                color = COLORS.NEURO
+            case CoverBy.Evil:
+                color: COLORS = COLORS.EVIL
 
         play_count = song_info["playCount"]
         song_name = format_song_name(song_info)
-        description = f"Cover by {cover_by}\n\nOriginal by {original_by}\n\nStream date: {date}\n{minutes}:{seconds:02} {play_count} plays"
+        description = f"Cover by {cover_str}\n\nOriginal by {original_by}\n\nStream date: {date}\n{minutes}:{seconds:02} {play_count} plays"
         if last_section:
             description += f"\n\n{last_section}"
         embed = discord.Embed(
