@@ -575,9 +575,8 @@ class MusicCog(commands.Cog):
         await ctx.reply(embed=embed)
 
     @commands.command(hidden=True)
+    @commands.is_owner()
     async def restart(_, ctx):
-        if ctx.author.id != conf.OWNER_ID:
-            return
         await ctx.send(f"Goodbye {emote(EMOTES.SAD)}")
         subprocess.Popen(
             [sys.executable] + sys.argv, creationflags=subprocess.CREATE_NEW_CONSOLE
@@ -674,17 +673,43 @@ class MusicCog(commands.Cog):
         embed.set_footer(text=footer)
         return embed
 
+    @commands.Cog.listener()
+    async def on_voice_state_update(self, member, before, after):
+        if member.id == self.bot.user.id:
+            if before.channel is not None and after.channel is None:
+                log.info(f"Disconnected from voice channel '{before.channel}'")
+                guild_id = before.channel.guild.id
+                mp = self.music_players.get(guild_id)
+                if mp and mp.current_song.playback:
+                    log.info("Detected active playback, attempting to resume")
+                    mp.current_song.playback.set_pause(True)
+                    await asyncio.sleep(1)
+                    vc = await before.channel.connect(reconnect=False)
+                    await self.play_current(vc)
+                    mp.current_song.playback.set_pause(False)
+            elif before.channel is None and after.channel is not None:
+                log.info(f"Connected to voice channel '{after.channel}'")
+            elif before.mute != after.mute:
+                guild_id = before.channel.guild.id
+                mp = self.music_players.get(guild_id)
+                if not mp:
+                    return
+                if after.mute:
+                    await after.channel.send(f"🔇 {emote(EMOTES.SAD)}")
+                    mp.current_song.set_pause(True)
+                else:
+                    await after.channel.send(f"🔊 {emote(EMOTES.HAPPY)}")
+                    mp.current_song.set_pause(False)
+
 
 class MyBot(commands.Bot):
     def __init__(self):
-        self.music_cog: MusicCog = None
         intents = discord.Intents.default()
         intents.message_content = True
         super().__init__(command_prefix="!", intents=intents, help_command=None)
 
     async def setup_hook(self):
-        self.music_cog = MusicCog(self)
-        await self.add_cog(self.music_cog)
+        await self.add_cog(MusicCog(self))
 
     async def on_ready(self):
         log.info(f"Logged in as {self.user} (ID: {self.user.id})")
@@ -700,33 +725,6 @@ class MyBot(commands.Bot):
             if "general" in channel.name.lower():
                 await channel.send(emote(EMOTES.WAVE))
                 break
-
-    async def on_voice_state_update(self, member, before, after):
-        if member.id == self.user.id:
-            if before.channel is not None and after.channel is None:
-                log.info(f"Disconnected from voice channel '{before.channel}'")
-                guild_id = before.channel.guild.id
-                mp = self.music_cog.music_players.get(guild_id)
-                if mp and mp.current_song.playback:
-                    log.info("Detected active playback, attempting to resume")
-                    mp.current_song.playback.set_pause(True)
-                    await asyncio.sleep(1)
-                    vc = await before.channel.connect(reconnect=False)
-                    await self.music_cog.play_current(vc)
-                    mp.current_song.playback.set_pause(False)
-            elif before.channel is None and after.channel is not None:
-                log.info(f"Connected to voice channel '{after.channel}'")
-            elif before.mute != after.mute:
-                guild_id = before.channel.guild.id
-                mp = self.music_cog.music_players.get(guild_id)
-                if not mp:
-                    return
-                if after.mute:
-                    await after.channel.send(f"🔇 {emote(EMOTES.SAD)}")
-                    mp.current_song.set_pause(True)
-                else:
-                    await after.channel.send(f"🔊 {emote(EMOTES.HAPPY)}")
-                    mp.current_song.set_pause(False)
 
     async def on_command_error(self, ctx, error):
         if isinstance(error, commands.CommandNotFound):
