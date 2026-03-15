@@ -46,12 +46,29 @@ IMAGES_URL = "https://images.neurokaraoke.com"
 log = logging.getLogger("discord")
 
 
+class CoverBy(Enum):
+    Vedal = 1
+    Twins = 2
+    Neuro = 3
+    Evil = 4
+
+
+def parse_cover_by(cover_str: str) -> CoverBy:
+    if "Vedal" in cover_str:
+        return CoverBy.Vedal
+    elif "Neuro" in cover_str and "Evil" in cover_str:
+        return CoverBy.Twins
+    elif "Neuro" in cover_str:
+        return CoverBy.Neuro
+    elif "Evil" in cover_str:
+        return CoverBy.Evil
+    else:
+        log.error(f"Could not parse cover string {cover_str}")
+        raise ValueError("Unknown cover string")
+
+
 def emote(emote: EMOTES) -> str:
     return random.choice(emote.value)
-
-
-def clamp(val, minv, maxv):
-    return minv if val < minv else maxv if val > maxv else val
 
 
 def is_number(s: str) -> bool:
@@ -75,7 +92,7 @@ def fetch_json_data(url: str, get=None, post=None, retries=3):
             response.raise_for_status()
             return response.json()
         except (requests.exceptions.RequestException, ValueError) as e:
-            log.info(f"Attempt {i+1} failed: {e}")
+            log.info(f"Attempt {i + 1} failed: {e}")
             if i < retries - 1:
                 asyncio.sleep(2)
             else:
@@ -115,13 +132,14 @@ class PCMSource(discord.AudioSource):
         self.BYTES_PER_SECOND = (
             192000  # 48000 * 2 * (16 // 8) # 48KHz, 2 channels, 16bit depth
         )
+        self.bytes_per_20ms = 20 * int(self.BYTES_PER_SECOND / 1000)
 
     def read(self):
         """Discord calls this every 20ms to get the next chunk of audio."""
         if self.paused:
-            return b"\x00" * 3840
+            return b"\x00" * self.bytes_per_20ms
         # Read exactly 20ms of audio
-        chunk = self.buffer.read(3840)
+        chunk = self.buffer.read(self.bytes_per_20ms)
         if not chunk:
             # ends playback
             return b""
@@ -133,8 +151,8 @@ class PCMSource(discord.AudioSource):
             final_pcm = (processed_float * 32767.0).astype(numpy.int16)
             chunk = final_pcm.T.tobytes()
 
-        if len(chunk) < 3840:
-            padding = 3840 - len(chunk)
+        if len(chunk) < self.bytes_per_20ms:
+            padding = self.bytes_per_20ms - len(chunk)
             chunk += b"\x00" * padding
         return chunk
 
@@ -156,7 +174,7 @@ class PCMSource(discord.AudioSource):
         nbytes = self.buffer.getbuffer().nbytes
         return nbytes // self.BYTES_PER_SECOND
 
-    def remaning(self) -> int:
+    def remaining(self) -> int:
         total_size = self.buffer.getbuffer().nbytes
         current_pos = self.buffer.tell()
         remaining_bytes = total_size - current_pos
@@ -164,7 +182,7 @@ class PCMSource(discord.AudioSource):
 
 
 class Song:
-    def __init__(self, playback: PCMSource, json_data, requested_by: str = None):
+    def __init__(self, playback: PCMSource, json_data, requested_by: str | None = None):
         self.playback = playback
         self.song_info = json_data
         self.requested_by = requested_by
@@ -206,8 +224,8 @@ class Song:
     def get_id(self) -> int:
         return self.song_info["id"]
 
-    def remaning(self) -> int:
-        return self.playback.remaning() if self.playback else None
+    def remaning(self) -> int | None:
+        return self.playback.remaining() if self.playback else None
 
     def clear_modifiers(self):
         self.playback.effects_board = Pedalboard([])
@@ -256,11 +274,13 @@ class MusicPlayer:
         if self.current_song.playback:
             self.current_song.playback.effects_board = effects_board
 
-    def get_next_song(self) -> Song:
+    def get_next_song(self) -> Song | None:
         if len(self.requests_cache) > 0:
             return self.requests_cache[0]
         elif len(self.cache) > 0:
             return self.cache[0]
+        else:
+            return None
 
     def refill(self, force_await=False):
         if force_await:
@@ -363,7 +383,7 @@ class MusicCog(commands.Cog):
         if not self.cmd_verify(ctx):
             return
         mp = self.get_music_player(ctx)
-        vol = clamp(vol, 0, 300.0)
+        vol = numpy.clip(vol, 0, 300.0)
         new_db = 0
         if vol != 100:
             new_db = 20 * math.log10(vol / 100)
@@ -396,7 +416,7 @@ class MusicCog(commands.Cog):
             )
             return
 
-        gain_db = clamp(gain_db, -100.0, 20.0)
+        gain_db = numpy.clip(gain_db, -100.0, 20.0)
         low_shelf = None
         for p in board:
             if isinstance(p, LowShelfFilter):
@@ -420,8 +440,10 @@ class MusicCog(commands.Cog):
             return
         next_song = self.get_music_player(ctx).get_next_song()
         ctx.voice_client.stop()
-
-        await ctx.reply(f"Skipping current song, next: `{next_song.song_name()}`")
+        if next_song:
+            await ctx.reply(f"Skipping current song, next: `{next_song.song_name()}`")
+        else:
+            await ctx.reply("Skipping current song, no more songs in queue")
 
     @commands.command(priority=6)
     async def song(self, ctx):
@@ -430,17 +452,28 @@ class MusicCog(commands.Cog):
             return
         mp = self.get_music_player(ctx)
         requested_by = mp.current_song.requested_by or self.bot.user.name
-        song_end = int(time.time()) + mp.current_song.remaning()
+        song_remaining = mp.current_song.remaning()
+        if song_remaining is None:
+            log.error("MusicPlayer: No playback for the current song")
+            return
+        song_end = int(time.time()) + song_remaining
         footer = f'Requested by "{requested_by}"'
         note = f"Ends <t:{song_end}:R>"
         embed = self.get_song_embed(mp.current_song.song_info, note, footer)
-        cover_by = " & ".join(mp.current_song.song_info["coverArtists"])
-        emot = EMOTES.JAM
-        if cover_by == "Evil":
-            emot = EMOTES.EVILJAM
-        elif cover_by == "Neuro" or cover_by == "Neuro v1" or cover_by == "Neuro v2":
-            emot = EMOTES.NEUROJAM
-        await ctx.reply(content=f"Playing right now {emote(emot)}", embed=embed)
+        cover_str = " & ".join(mp.current_song.song_info["coverArtists"])
+        cover_by = parse_cover_by(cover_str)
+        _emote = EMOTES.JAM
+        match cover_by:
+            case CoverBy.Vedal:
+                pass
+            case CoverBy.Twins:
+                pass
+            case CoverBy.Neuro:
+                _emote = EMOTES.NEUROJAM
+            case CoverBy.Evil:
+                _emote = EMOTES.EVILJAM
+
+        await ctx.reply(content=f"Playing right now {emote(_emote)}", embed=embed)
 
     @commands.command(priority=6)
     async def nextsong(self, ctx):
@@ -456,17 +489,27 @@ class MusicCog(commands.Cog):
             return
 
         requested_by = next_song.requested_by or self.bot.user.name
-        song_end = int(time.time()) + mp.current_song.remaning() + 2
+        song_remaining = mp.current_song.remaning()
+        if song_remaining is None:
+            log.error("MusicPlayer: No playback for the current song")
+            return
+        song_end = int(time.time()) + song_remaining + 2
         footer = f'Requested by "{requested_by}"'
         note = f"Playing in: <t:{song_end}:R>"
         embed = self.get_song_embed(next_song.song_info, note, footer)
-        cover_by = " & ".join(next_song.song_info["coverArtists"])
-        emot = EMOTES.JAM
-        if cover_by == "Evil":
-            emot = EMOTES.EVILJAM
-        elif cover_by == "Neuro" or cover_by == "Neuro v1" or cover_by == "Neuro v2":
-            emot = EMOTES.NEUROJAM
-        await ctx.reply(content=f"Next song: {emote(emot)}", embed=embed)
+        cover_str = " & ".join(next_song.song_info["coverArtists"])
+        cover_by = parse_cover_by(cover_str)
+        _emote = EMOTES.JAM
+        match cover_by:
+            case CoverBy.Vedal:
+                pass
+            case CoverBy.Twins:
+                pass
+            case CoverBy.Neuro:
+                _emote = EMOTES.NEUROJAM
+            case CoverBy.Evil:
+                _emote = EMOTES.EVILJAM
+        await ctx.reply(content=f"Next song: {emote(_emote)}", embed=embed)
 
     @commands.command(priority=5)
     async def queue(self, ctx):
@@ -503,7 +546,7 @@ class MusicCog(commands.Cog):
         # {"sortDesc":false,"genreIds":null,"themeIds":null,"moodIds":null,"artistIds":null,
         # "coverArtistIds":null,"languageIds":null,"energyLevel":null,"tempo":null,"key":null,"karaokeStart":null,"karaokeEnd":null}
         response = fetch_json_data(SEARCH_API, post=data)
-        if not response or not "items" in response:
+        if not response or "items" not in response:
             await ctx.reply(f"Got empty request back {emote(EMOTES.SAD)}")
             return
 
@@ -512,13 +555,14 @@ class MusicCog(commands.Cog):
             await ctx.reply(f"No results for `{search}` {emote(EMOTES.SIDE_EYE)}")
             return
 
-        mp = self.get_music_player(ctx)
-        playing_in = (
-            int(time.time())
-            + mp.request_queue_duration()
-            + mp.current_song.remaning()
-            + 2
-        )
+        mp: MusicPlayer = self.get_music_player(ctx)
+
+        song_remaining = mp.current_song.remaning()
+        if song_remaining is None:
+            log.error("MusicPlayer: No playback for the current song")
+            return
+        playing_in = int(time.time()) + mp.request_queue_duration() + song_remaining + 2
+
         mp.requests_cache.append(Song(None, result_list[0], ctx.author.name))
         song_name = format_song_name(result_list[0])
         await ctx.reply(
@@ -622,11 +666,13 @@ class MusicCog(commands.Cog):
         mp = self.get_music_player(vc)
         vc.play(
             mp.current_song.playback,
-            after=lambda e: log.error(
-                f"Voice playback error: {e}\n(GuildID: {vc.guild.id})", exc_info=e
-            )
-            if e
-            else self.bot.loop.create_task(self.next_song(vc.guild.id)),
+            after=lambda e: (
+                log.error(
+                    f"Voice playback error: {e}\n(GuildID: {vc.guild.id})", exc_info=e
+                )
+                if e
+                else self.bot.loop.create_task(self.next_song(vc.guild.id))
+            ),
         )
         if self.updatestatus:
             song_name = mp.current_song.song_name()
@@ -648,23 +694,32 @@ class MusicCog(commands.Cog):
         await self.play_current(vc)
         mp.refill()
 
-    def get_song_embed(_, song_info, last_section: str = None, footer: str = None):
-        cover_by = " & ".join(song_info["coverArtists"])
+    def get_song_embed(
+        _, song_info, last_section: str | None = None, footer: str | None = None
+    ):
+
         original_by = " & ".join(song_info["originalArtists"])
         date = datetime.fromisoformat(song_info["streamDate"]).strftime("%B %d, %Y")
         minutes, seconds = divmod(song_info["duration"], 60)
         song_url = SONG_URL + song_info["id"]
+
+        cover_str = " & ".join(song_info["coverArtists"])
+        cover_by = parse_cover_by(cover_str)
+
         color = COLORS.EMBED_DEFAULT
-        if cover_by == "Evil":
-            color = COLORS.EVIL
-        elif cover_by == "Neuro" or cover_by == "Neuro v1" or cover_by == "Neuro v2":
-            color = COLORS.NEURO
-        elif "Vedal" in cover_by:
-            color = COLORS.VEDAL
+        match cover_by:
+            case CoverBy.Vedal:
+                color = COLORS.VEDAL
+            case CoverBy.Twins:
+                color = COLORS.TWINS
+            case CoverBy.Neuro:
+                color = COLORS.NEURO
+            case CoverBy.Evil:
+                color = COLORS.EVIL
 
         play_count = song_info["playCount"]
         song_name = format_song_name(song_info)
-        description = f"Cover by {cover_by}\n\nOriginal by {original_by}\n\nStream date: {date}\n{minutes}:{seconds:02} {play_count} plays"
+        description = f"Cover by {cover_str}\n\nOriginal by {original_by}\n\nStream date: {date}\n{minutes}:{seconds:02} {play_count} plays"
         if last_section:
             description += f"\n\n{last_section}"
         embed = discord.Embed(
