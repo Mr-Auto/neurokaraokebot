@@ -12,7 +12,6 @@ import numpy
 import sys
 import os
 from dotenv import load_dotenv
-from enum import Enum
 from collections import deque
 from datetime import datetime
 from itertools import chain, islice
@@ -27,14 +26,12 @@ from pedalboard import (
     LowShelfFilter,
     Bitcrush,
 )
-import conf
-from conf import EMOTES, COLORS
+from conf import EMOTES, COLORS, ALLOWED_CHANNELS, MAX_CACHE
 
 # Known issues:
 # - when request queue is empty and you request song at the exact time the current playing song ended
 # bot will try to play that song immediately, but the playback is not ready, so it will be skipped
 
-MAX_CACHE = 4
 RANDOM_API = "https://api.neurokaraoke.com/api/songs/random"
 STORAGE_URL = "https://storage.neurokaraoke.com/"
 SONG_URL = "https://www.evilkaraoke.com/song/"
@@ -314,6 +311,18 @@ class MusicPlayer:
                 self.cache.append(Song(None, item))
 
 
+# check if command is allowed in certain situation. This also disabled the trigger to missing parameter if command doesn't pass this test
+def cmd_verify(allowed_channels=False):
+    async def predicate(ctx):
+        if allowed_channels and ctx.channel.id in ALLOWED_CHANNELS:
+            return True
+        vc = ctx.voice_client
+        mp = ctx.cog.get_music_player(ctx)
+        return vc and mp and ctx.channel.id == vc.channel.id
+
+    return commands.check(predicate)
+
+
 class MusicCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -342,28 +351,25 @@ class MusicCog(commands.Cog):
         await self.start(ctx)
 
     @commands.command(priority=2)
+    @cmd_verify()
     async def pause(self, ctx):
-        if not self.cmd_verify(ctx):
-            return
         vc = ctx.voice_client
         if vc.is_playing():
             vc.pause()
             await ctx.reply(f"Paused ⏸️ {emote(EMOTES.PAUSE)}")
 
     @commands.command(priority=2)
+    @cmd_verify()
     async def resume(self, ctx):
-        if not self.cmd_verify(ctx):
-            return
         vc = ctx.voice_client
         if vc.is_paused():
             vc.resume()
             await ctx.reply(f"Resumed ▶️ {emote(EMOTES.JAM)}")
 
     @commands.command()
+    @cmd_verify()
     async def reconnect(self, ctx):
         """Reset the bot and reconnect to this VC (kills the queue)"""
-        if not self.cmd_verify(ctx):
-            return
         mp = self.get_music_player(ctx)
         self.music_players[ctx.guild.id] = None
         if mp and mp.current_song.playback:
@@ -378,10 +384,9 @@ class MusicCog(commands.Cog):
         await self.start(ctx)
 
     @commands.command(priority=4)
+    @cmd_verify()
     async def volume(self, ctx, vol: float):
         """Change the volume"""
-        if not self.cmd_verify(ctx):
-            return
         mp = self.get_music_player(ctx)
         vol = numpy.clip(vol, 0, 300.0)
         new_db = 0
@@ -391,10 +396,9 @@ class MusicCog(commands.Cog):
         await ctx.reply(f"Volume set to {vol}% 🔊")
 
     @commands.command(priority=4)
+    @cmd_verify()
     async def bass(self, ctx, value: str):
         """Change bass [boost, reset, value in db]"""
-        if not self.cmd_verify(ctx):
-            return
         mp = self.get_music_player(ctx)
         gain_db = 0.0
         board = mp.current_song.playback.effects_board
@@ -433,11 +437,10 @@ class MusicCog(commands.Cog):
         await ctx.reply(f"Bass adjusted by {gain_db}db {emote(EMOTES.BASED)}")
 
     @commands.command(priority=8)
+    @cmd_verify()
     @commands.cooldown(1, 5)
     async def skip(self, ctx):
         """Skip current song"""
-        if not self.cmd_verify(ctx):
-            return
         next_song = self.get_music_player(ctx).get_next_song()
         ctx.voice_client.stop()
         if next_song:
@@ -446,10 +449,9 @@ class MusicCog(commands.Cog):
             await ctx.reply("Skipping current song, no more songs in queue")
 
     @commands.command(priority=6)
+    @cmd_verify()
     async def song(self, ctx):
         """Check current song"""
-        if not self.cmd_verify(ctx):
-            return
         mp = self.get_music_player(ctx)
         requested_by = mp.current_song.requested_by or self.bot.user.name
         song_remaining = mp.current_song.remaning()
@@ -476,10 +478,9 @@ class MusicCog(commands.Cog):
         await ctx.reply(content=f"Playing right now {emote(_emote)}", embed=embed)
 
     @commands.command(priority=6)
+    @cmd_verify()
     async def nextsong(self, ctx):
         """Check the next song"""
-        if not self.cmd_verify(ctx):
-            return
         next_song = None
         mp = self.get_music_player(ctx)
         next_song = mp.get_next_song()
@@ -512,10 +513,9 @@ class MusicCog(commands.Cog):
         await ctx.reply(content=f"Next song: {emote(_emote)}", embed=embed)
 
     @commands.command(priority=5)
+    @cmd_verify()
     async def queue(self, ctx):
         """Current queue (nest 10 songs)"""
-        if not self.cmd_verify(ctx):
-            return
         mp = self.get_music_player(ctx)
 
         description = ""
@@ -529,10 +529,9 @@ class MusicCog(commands.Cog):
         await ctx.reply(embed=embed)
 
     @commands.command(priority=8)
+    @cmd_verify()
     async def sr(self, ctx, *, search):
         """Song request"""
-        if not self.cmd_verify(ctx):
-            return
         data = {
             "search": search,
             "page": 1,
@@ -571,21 +570,20 @@ class MusicCog(commands.Cog):
         mp.refill()
 
     @commands.command()
+    @cmd_verify(True)
     async def randomsong(self, ctx):
         """Random song from neurokaraoke.com"""
-        if self.cmd_verify(ctx) or ctx.channel.id in conf.ALLOWED_CHANNELS:
-            data = fetch_json_data(RANDOM_API)
-            if not data or not isinstance(data, list) or len(data) == 0:
-                await ctx.reply("Unable to fetch data from api.neurokaraoke.com")
-                return
-            embed = self.get_song_embed(data[0])
-            await ctx.reply(embed=embed)
+        data = fetch_json_data(RANDOM_API)
+        if not data or not isinstance(data, list) or len(data) == 0:
+            await ctx.reply("Unable to fetch data from api.neurokaraoke.com")
+            return
+        embed = self.get_song_embed(data[0])
+        await ctx.reply(embed=embed)
 
     @commands.command(priority=7)
+    @cmd_verify()
     async def updatestatus(self, ctx, update: bool):
         """Disable/enable bot updating VC status with song name"""
-        if not self.cmd_verify(ctx):
-            return
         if self.updatestatus != update:
             if update:
                 await ctx.reply(f"Status updates back ON {emote(EMOTES.OK)}")
@@ -597,19 +595,17 @@ class MusicCog(commands.Cog):
         self.updatestatus = update
 
     @commands.command(priority=3)
+    @cmd_verify()
     async def resetmodifiers(self, ctx):
         """Reset all song modifiers, like bass, volume etc."""
-        if not self.cmd_verify(ctx):
-            return
         mp = self.get_music_player(ctx)
         mp.current_song.clear_modifiers()
         await ctx.reply(f"Modifiers reset, volume 100% {emote(EMOTES.OK)}")
 
     @commands.command(name="commands", hidden=True)
+    @cmd_verify(True)
     async def commands_list(self, ctx):
         """List of all commands"""
-        if not self.cmd_verify(ctx):
-            return
         embed = discord.Embed(title="Command List", color=discord.Color.orange())
         cmds = [c for c in self.bot.commands if not c.hidden]
         sorted_commands = sorted(
@@ -632,10 +628,23 @@ class MusicCog(commands.Cog):
         )
         await bot.close()
 
-    def cmd_verify(self, ctx):
-        vc = ctx.voice_client
-        mp = self.get_music_player(ctx)
-        return vc and mp and ctx.channel.id == vc.channel.id
+    @commands.command()
+    @cmd_verify(True)
+    # @commands.is_owner()
+    async def emotes(self, ctx, group_name: str):
+        group_name = group_name.upper()
+        if group_name not in EMOTES.__members__:
+            ctx.reply(f"So such group name {emote(EMOTES.SAD)}")
+        else:
+            message = ""
+            for emote in EMOTES[group_name].value:
+                message += emote
+                # just in case send message before we run out of characters
+                if len(message) > 2000 - 40:
+                    await ctx.reply(message)
+                    message = ""
+            if message:
+                await ctx.reply(message)
 
     def get_music_player(self, ctx) -> MusicPlayer:
         return self.music_players.get(ctx.guild.id)
@@ -818,8 +827,6 @@ class MyBot(commands.Bot):
             return
 
         if isinstance(error, commands.MissingRequiredArgument):
-            if not ctx.voice_client or ctx.voice_client.channel.id != ctx.channel.id:
-                return
             await ctx.reply(
                 f"Missing argument: {error.param.name} {emote(EMOTES.SIDE_EYE)}"
             )
