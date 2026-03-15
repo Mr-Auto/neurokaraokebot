@@ -1,4 +1,4 @@
-﻿import discord
+import discord
 from discord.ext import commands, tasks
 import logging
 import io
@@ -12,6 +12,7 @@ import numpy
 import sys
 import os
 from dotenv import load_dotenv
+from enum import Enum
 from collections import deque
 from datetime import datetime
 from itertools import chain, islice
@@ -126,9 +127,7 @@ class PCMSource(discord.AudioSource):
         self.buffer = io.BytesIO(raw_pcm_data)
         self.paused = False
         self.effects_board = Pedalboard([])
-        self.BYTES_PER_SECOND = (
-            192000  # 48000 * 2 * (16 // 8) # 48KHz, 2 channels, 16bit depth
-        )
+        self.BYTES_PER_SECOND = 48000 * 2 * (16 // 8)  # 48KHz, 2 channels, 16bit depth
         self.bytes_per_20ms = 20 * int(self.BYTES_PER_SECOND / 1000)
 
     def read(self):
@@ -558,10 +557,10 @@ class MusicCog(commands.Cog):
 
         song_remaining = mp.current_song.remaning()
         if song_remaining is None:
-            log.error("MusicPlayer: No playback for the current song")
-            return
-        playing_in = int(time.time()) + mp.request_queue_duration() + song_remaining + 2
+            log.error("sr: No playback for the current song")
+            song_remaining = 0
 
+        playing_in = int(time.time()) + mp.request_queue_duration() + song_remaining + 2
         mp.requests_cache.append(Song(None, result_list[0], ctx.author.name))
         song_name = format_song_name(result_list[0])
         await ctx.reply(
@@ -706,7 +705,6 @@ class MusicCog(commands.Cog):
     def get_song_embed(
         _, song_info, last_section: str | None = None, footer: str | None = None
     ):
-
         original_by = " & ".join(song_info["originalArtists"])
         date = datetime.fromisoformat(song_info["streamDate"]).strftime("%B %d, %Y")
         minutes, seconds = divmod(song_info["duration"], 60)
