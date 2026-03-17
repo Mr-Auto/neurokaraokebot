@@ -1,0 +1,6 @@
+discord.py[voice]
+requests
+numpy
+pedalboard
+python-dotenv
+ffmpeg
