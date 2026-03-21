@@ -2,7 +2,9 @@
 ALLOWED_CHANNELS = (0,)
 # Max songs cached, since we use double cache, with requested songs it will be 8
 # (4 in random queue and 4 in request queue, assuming there is 4 or more songs requested)
-MAX_CACHE = 4
+MAX_CACHE = 3
+# Pause the playback after the bot is left alone in the VC for X minutes
+PAUSE_AFTER = 3
 
 from enum import Enum, IntEnum
 

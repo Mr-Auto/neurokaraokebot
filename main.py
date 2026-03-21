@@ -27,7 +27,7 @@ from pedalboard import (
     LowShelfFilter,
     Bitcrush,
 )
-from conf import EMOTES, COLORS, ALLOWED_CHANNELS, MAX_CACHE
+from conf import EMOTES, COLORS, ALLOWED_CHANNELS, MAX_CACHE, PAUSE_AFTER
 
 # Known issues:
 # - when request queue is empty and you request song at the exact time the current playing song ended
@@ -309,6 +309,14 @@ class MusicPlayer:
             for item in data:
                 self.cache.append(Song(None, item))
 
+    def pause(self):
+        if self.current_song.playback:
+            self.current_song.playback.set_pause(True)
+
+    def resume(self):
+        if self.current_song.playback:
+            self.current_song.playback.set_pause(False)
+
 
 # check if command is allowed in certain situation. This also disabled the trigger to missing parameter if command doesn't pass this test
 def cmd_verify(allowed_channels=False):
@@ -356,6 +364,7 @@ class MusicCog(commands.Cog):
         if vc.is_playing():
             vc.pause()
             await ctx.reply(f"Paused ⏸️ {emote(EMOTES.PAUSE)}")
+            self.get_music_player(ctx).pause()
 
     @commands.command(priority=2)
     @cmd_verify()
@@ -364,6 +373,7 @@ class MusicCog(commands.Cog):
         if vc.is_paused():
             vc.resume()
             await ctx.reply(f"Resumed ▶️ {emote(EMOTES.JAM)}")
+            self.get_music_player(ctx).resume()
 
     @commands.command()
     @cmd_verify()
@@ -753,6 +763,8 @@ class MusicCog(commands.Cog):
                     await asyncio.sleep(1)
                     vc = await before.channel.connect(reconnect=False)
                     await self.play_current(vc)
+                    if mp.alone_counter > PAUSE_AFTER:
+                        vc.pause()
                     mp.current_song.playback.set_pause(False)
             elif before.channel is None and after.channel is not None:
                 log.info(f"Connected to voice channel '{after.channel}'")
@@ -789,8 +801,9 @@ class MusicCog(commands.Cog):
             # includes the bot itself
             if len(vc.channel.members) < 2:
                 mp.alone_counter += 1
-                if mp.alone_counter > 3:
+                if mp.alone_counter > PAUSE_AFTER:
                     vc.pause()
+                    mp.pause()
                     await vc.channel.send(
                         f"No one around {emote(EMOTES.SAD)}\nPaused ⏸️"
                     )
