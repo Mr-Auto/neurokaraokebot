@@ -451,11 +451,19 @@ class MusicCog(commands.Cog):
     async def skip(self, ctx):
         """Skip current song"""
         next_song = self.get_music_player(ctx).get_next_song()
-        ctx.voice_client.stop()
-        if next_song:
+        vc = ctx.voice_client
+        if not vc.is_playing() and not vc.is_paused():
+            log.warning("Skip: no current playback?")
+            mp = self.get_music_player(ctx)
+            mp.load_next_song()
+            await self.play_current(vc)
+        else:
+            ctx.voice_client.stop()
+        if next_song is not None:
             await ctx.reply(f"Skipping current song, next: `{next_song.song_name()}`")
         else:
             await ctx.reply("Skipping current song, no more songs in queue")
+            log.error(f"skip: no songs in the queue?")
 
     @commands.command(priority=6)
     @cmd_verify()
@@ -632,9 +640,16 @@ class MusicCog(commands.Cog):
     @commands.is_owner()
     async def restart(_, ctx):
         await ctx.send(f"Goodbye {emote(EMOTES.SAD)}")
-        subprocess.Popen(
-            [sys.executable] + sys.argv, creationflags=subprocess.CREATE_NEW_CONSOLE
-        )
+        creationflags = 0
+        if sys.platform == "win32":
+            creationflags = subprocess.CREATE_NEW_CONSOLE
+        subprocess.Popen([sys.executable] + sys.argv, creationflags=creationflags)
+        await bot.close()
+
+    @commands.command(hidden=True)
+    @commands.is_owner()
+    async def exit(_, ctx):
+        await ctx.send(f"Goodbye {emote(EMOTES.SAD)}")
         await bot.close()
 
     @commands.command()
@@ -834,7 +849,14 @@ class MyBot(commands.Bot):
                 break
 
     async def on_command_error(self, ctx, error):
-        if isinstance(error, commands.CommandNotFound):
+        if isinstance(
+            error,
+            (
+                commands.CommandNotFound,
+                commands.CheckFailure,
+                commands.CommandOnCooldown,
+            ),
+        ):
             return
 
         if isinstance(error, commands.MissingRequiredArgument):
@@ -849,8 +871,17 @@ class MyBot(commands.Bot):
 timestamp = datetime.now().strftime("%y%m%d-%H%M%S")
 log_filename = f"neurokaraoke_{timestamp}.log"
 handler = logging.FileHandler(filename=log_filename, encoding="utf-8", mode="w")
+formatter = logging.Formatter(
+    "[{asctime}] [{levelname:<8}] {name}: {message}", style="{"
+)
+handler.setFormatter(formatter)
 bot = MyBot()
 print("Starting up")
 load_dotenv()
-bot.run(os.getenv("BOT_TOKEN"), log_handler=handler, log_level=logging.DEBUG)
+bot.run(
+    os.getenv("BOT_TOKEN"),
+    log_handler=handler,
+    log_formatter=formatter,
+    root_logger=True,
+)
 print("Shutting down")
