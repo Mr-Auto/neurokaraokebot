@@ -1,5 +1,5 @@
 .env
-conf.py
+config.py
 *.log
 __pycache__/
 *.py[cod]

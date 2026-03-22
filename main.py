@@ -27,7 +27,7 @@ from pedalboard import (
     LowShelfFilter,
     Bitcrush,
 )
-from conf import EMOTES, COLORS, ALLOWED_CHANNELS, MAX_CACHE, PAUSE_AFTER
+from config import EMOTES, COLORS, ALLOWED_CHANNELS, MAX_CACHE, PAUSE_AFTER
 
 
 RANDOM_API = "https://api.neurokaraoke.com/api/songs/random"
