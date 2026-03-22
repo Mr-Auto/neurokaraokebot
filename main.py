@@ -62,8 +62,8 @@ def parse_cover_by(cover_str: str) -> CoverBy:
         raise ValueError("Unknown cover string")
 
 
-def emote(emote: EMOTES) -> str:
-    return random.choice(emote.value)
+def emote(_emote: EMOTES) -> str:
+    return random.choice(_emote.value)
 
 
 def is_number(s: str) -> bool:
@@ -644,11 +644,11 @@ class MusicCog(commands.Cog):
     async def emotes(self, ctx, group_name: str):
         group_name = group_name.upper()
         if group_name not in EMOTES.__members__:
-            ctx.reply(f"So such group name {emote(EMOTES.SAD)}")
+            await ctx.reply(f"So such group name {emote(EMOTES.SAD)}")
         else:
             message = ""
-            for emote in EMOTES[group_name].value:
-                message += emote
+            for emote_str in EMOTES[group_name].value:
+                message += emote_str
                 # just in case send message before we run out of characters
                 if len(message) > 2000 - 40:
                     await ctx.reply(message)
