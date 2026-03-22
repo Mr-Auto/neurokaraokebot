@@ -411,7 +411,7 @@ class MusicCog(commands.Cog):
                 if isinstance(p, LowShelfFilter):
                     board.remove(p)
                     break
-            mp.current_song.fix_limiter()
+            mp.fix_limiter()
             await ctx.reply(f"Bass reset {emote(EMOTES.NWELIV)}")
             return
         elif value and value.lower() == "boost":
@@ -434,7 +434,7 @@ class MusicCog(commands.Cog):
         else:
             low_shelf = LowShelfFilter(cutoff_frequency_hz=200, gain_db=gain_db)
             board.insert(0, low_shelf)
-            mp.current_song.fix_limiter()
+            mp.fix_limiter()
 
         # TODO use based emote only if the bass is positive value
         await ctx.reply(f"Bass adjusted by {gain_db}db {emote(EMOTES.BASED)}")
