@@ -126,7 +126,7 @@ class PCMSource(discord.AudioSource):
         raw_pcm_data, _ = process.communicate()
         self.buffer = io.BytesIO(raw_pcm_data)
         self.paused = False
-        self.effects_board = Pedalboard([])
+        self.effects_board: Pedalboard = None
         self.BYTES_PER_SECOND = 48000 * 2 * (16 // 8)  # 48KHz, 2 channels, 16bit depth
         self.bytes_per_20ms = 20 * int(self.BYTES_PER_SECOND / 1000)
 
@@ -178,14 +178,112 @@ class PCMSource(discord.AudioSource):
 
 
 class Song:
-    def __init__(self, playback: PCMSource, json_data, requested_by: str | None = None):
-        self.playback = playback
+    def __init__(self, json_data: dict, requested_by: str | None = None):
+        if not json_data or not isinstance(json_data, dict):
+            raise TypeError(f"Song: trying to crate object from wrong data: {json_data}")
+        self.playback: PCMSource = None
         self.song_info = json_data
         self.requested_by = requested_by
 
+    def has_playback(self):
+        return self.playback is None
+
+    def song_name(self) -> str:
+        return format_song_name(self.song_info)
+
+    def get_id(self) -> int:
+        return self.song_info["id"]
+
+    def remaning(self) -> int | None:
+        return self.playback.remaining() if self.playback else None
+
+    def download(self):
+        song_url = STORAGE_URL + self.song_info["absolutePath"]
+        self.playback = PCMSource(song_url)
+        if not self.playback:
+            log.error(f"cache_song: could not load song\n song data: {self.song_info}")
+
+
+class MusicPlayer:
+    def __init__(self):
+        self.cache = deque()
+        self.requests_cache = deque()
+        self.effects_board = Pedalboard([])
+        self.alone_counter = 0
+        self.update_status = True
+        self.refill_task: asyncio.Future = None
+        data = fetch_json_data(RANDOM_API)
+        if not isinstance(data, list) or len(data) == 0:
+            log.error("MusicPlayer: Unable to fetch random queue from api.neurokaraoke.com")
+            return
+        current_song_data = data[0]
+        for i in range(1, 50):
+            self.cache.append(Song(data[i]))
+        self.current_song = Song(current_song_data)
+        self.current_song.download()
+
+    def request_queue_duration(self) -> int:
+        duration = 0
+        for song in self.requests_cache:
+            duration += song.song_info["duration"] + 2
+        return duration
+
+    def load_next_song(self):
+        if len(self.requests_cache) > 0:
+            self.current_song = self.requests_cache.popleft()
+        else:
+            self.current_song = self.cache.popleft()
+
+    def get_next_song(self) -> Song | None:
+        if len(self.requests_cache) > 0:
+            return self.requests_cache[0]
+        elif len(self.cache) > 0:
+            return self.cache[0]
+        else:
+            return None
+
+    def refill(self, force_await=False):
+        if force_await:
+            log.warning("refill: Forcing refill, expect latency increase")
+            self._refill_queue()
+            return
+
+        if self.refill_task and not self.refill_task.done():
+            log.info("refill_queue: refill already running, skipping")
+            return
+
+        loop = asyncio.get_running_loop()
+        self.refill_task = loop.run_in_executor(None, self._refill_queue)
+
+    def _refill_queue(self):
+        for item in islice(chain(self.requests_cache, self.cache), MAX_CACHE):
+            if item.playback:
+                continue
+            item.download()
+
+        if len(self.cache) < MAX_CACHE + 1:
+            data = fetch_json_data(RANDOM_API)
+            if not isinstance(data, list) or len(data) == 0:
+                log.warning("refill_queue: No data in fetched result")
+                return
+
+            for item in data:
+                self.cache.append(Song(item))
+
+    def pause(self):
+        if self.current_song.playback:
+            self.current_song.playback.set_pause(True)
+
+    def resume(self):
+        if self.current_song.playback:
+            self.current_song.playback.set_pause(False)
+
+    def clear_modifiers(self):
+        self.effects_board = Pedalboard([])
+
     def set_volume(self, db_gain: float):
-        if self.playback:
-            board = self.playback.effects_board
+        if self.current_song.playback:
+            board = self.effects_board
             gain = None
             for p in board:
                 if isinstance(p, Gain):
@@ -204,118 +302,18 @@ class Song:
                     self.fix_limiter()
 
     def fix_limiter(self):
-        if self.playback:
-            board = self.playback.effects_board
+        if self.current_song.playback:
+            board = self.effects_board
             for p in board:
                 if isinstance(p, Limiter):
                     board.remove(p)
                     break
-
             if len(board) > 0:
                 board.append(Limiter(threshold_db=-0.1))
 
-    def song_name(self) -> str:
-        return format_song_name(self.song_info)
-
-    def get_id(self) -> int:
-        return self.song_info["id"]
-
-    def remaning(self) -> int | None:
-        return self.playback.remaining() if self.playback else None
-
-    def clear_modifiers(self):
-        self.playback.effects_board = Pedalboard([])
-
-
-class MusicPlayer:
-    def __init__(self):
-        self.cache = deque()
-        self.requests_cache = deque()
-        self.alone_counter = 0
-        self.update_status = True
-        self.refill_task: asyncio.Future = None
-        data = fetch_json_data(RANDOM_API)
-        if not isinstance(data, list) or len(data) == 0:
-            log.error(
-                "MusicPlayer: Unable to fetch random queue from api.neurokaraoke.com"
-            )
-            return
-        current_song_data = data[0]
-        for i in range(1, 50):
-            self.cache.append(Song(None, data[i]))
-        song_url = STORAGE_URL + current_song_data["absolutePath"]
-        playback = PCMSource(song_url)
-        if not playback:
-            log.error("MusicPlayer: Unable to construct playback")
-            return
-        self.current_song = Song(playback, current_song_data)
-
-    def request_queue_duration(self) -> int:
-        duration = 0
-        for song in self.requests_cache:
-            duration += song.song_info["duration"] + 2
-
-        return duration
-
-    def load_next_song(self):
-        effects_board = (
-            self.current_song.playback.effects_board
-            if self.current_song.playback
-            else Pedalboard([])
-        )
-        if len(self.requests_cache) > 0:
-            self.current_song = self.requests_cache.popleft()
-        else:
-            self.current_song = self.cache.popleft()
+    def apply_effects_board(self):
         if self.current_song.playback:
-            self.current_song.playback.effects_board = effects_board
-
-    def get_next_song(self) -> Song | None:
-        if len(self.requests_cache) > 0:
-            return self.requests_cache[0]
-        elif len(self.cache) > 0:
-            return self.cache[0]
-        else:
-            return None
-
-    def refill(self, force_await=False):
-        if force_await:
-            self._refill_queue()
-            return
-
-        if self.refill_task and not self.refill_task.done():
-            log.info("refill_queue: refill already running, skipping")
-            return
-
-        loop = asyncio.get_running_loop()
-        self.refill_task = loop.run_in_executor(None, self._refill_queue)
-
-    def _refill_queue(self):
-        for item in islice(chain(self.requests_cache, self.cache), MAX_CACHE):
-            if item.playback:
-                continue
-            song_url = STORAGE_URL + item.song_info["absolutePath"]
-            item.playback = PCMSource(song_url)
-            if not item.playback:
-                log.warning(f"refill_queue: Unable to load song url: {song_url}")
-                continue
-
-        if len(self.cache) < MAX_CACHE + 1:
-            data = fetch_json_data(RANDOM_API)
-            if not isinstance(data, list) or len(data) == 0:
-                log.warning("refill_queue: No data in fetched result")
-                return
-
-            for item in data:
-                self.cache.append(Song(None, item))
-
-    def pause(self):
-        if self.current_song.playback:
-            self.current_song.playback.set_pause(True)
-
-    def resume(self):
-        if self.current_song.playback:
-            self.current_song.playback.set_pause(False)
+            self.current_song.playback.effects_board = self.effects_board
 
 
 # check if command is allowed in certain situation. This also disabled the trigger to missing parameter if command doesn't pass this test
@@ -346,15 +344,11 @@ class MusicCog(commands.Cog):
         if ctx.voice_client or mp:
             return
         if ctx.channel.type != discord.ChannelType.voice:
-            await ctx.reply(
-                f"Can't play audio in '{ctx.channel.type}' channel! {emote(EMOTES.SAD)}"
-            )
+            await ctx.reply(f"Can't play audio in '{ctx.channel.type}' channel! {emote(EMOTES.SAD)}")
             return
         channel = ctx.channel
         await channel.connect(reconnect=False)
-        await ctx.reply(
-            f"Starting Neuro Karaoke Playback in '{channel}' {emote(EMOTES.HAPPY)}"
-        )
+        await ctx.reply(f"Starting Neuro Karaoke Playback in '{channel}' {emote(EMOTES.HAPPY)}")
         await self.start(ctx)
 
     @commands.command(priority=2)
@@ -410,7 +404,7 @@ class MusicCog(commands.Cog):
         """Change bass [boost, reset, value in db]"""
         mp = self.get_music_player(ctx)
         gain_db = 0.0
-        board = mp.current_song.playback.effects_board
+        board = mp.effects_board
         if value and (value.lower() == "reset" or value == "0"):
             for p in board:
                 if isinstance(p, LowShelfFilter):
@@ -424,9 +418,7 @@ class MusicCog(commands.Cog):
         elif is_number(value):
             gain_db = float(value)
         elif value:
-            await ctx.reply(
-                f"Wrong parameter. Use [reset, boost or number] {emote(EMOTES.STARE)}"
-            )
+            await ctx.reply(f"Wrong parameter. Use [reset, boost or number] {emote(EMOTES.STARE)}")
             return
 
         gain_db = numpy.clip(gain_db, -100.0, 20.0)
@@ -540,9 +532,7 @@ class MusicCog(commands.Cog):
         for song in islice(chain(mp.requests_cache, mp.cache), 10):
             description += f"- {song.song_name()}\n"
 
-        embed = discord.Embed(
-            title="Current queue:", description=description, color=COLORS.QUEUE
-        )
+        embed = discord.Embed(title="Current queue:", description=description, color=COLORS.QUEUE)
         await ctx.reply(embed=embed)
 
     @commands.command(priority=8)
@@ -579,7 +569,7 @@ class MusicCog(commands.Cog):
             song_remaining = 0
 
         playing_in = int(time.time()) + mp.request_queue_duration() + song_remaining + 2
-        mp.requests_cache.append(Song(None, result_list[0], ctx.author.name))
+        mp.requests_cache.append(Song(result_list[0], ctx.author.name))
         song_name = format_song_name(result_list[0])
         await ctx.reply(
             f"Added `{song_name}` at position {len(mp.requests_cache)} in the queue\nPlaying in <t:{playing_in}:R>"
@@ -616,7 +606,7 @@ class MusicCog(commands.Cog):
     async def resetmodifiers(self, ctx):
         """Reset all song modifiers, like bass, volume etc."""
         mp = self.get_music_player(ctx)
-        mp.current_song.clear_modifiers()
+        mp.clear_modifiers()
         await ctx.reply(f"Modifiers reset, volume 100% {emote(EMOTES.OK)}")
 
     @commands.command(name="commands", hidden=True)
@@ -629,11 +619,7 @@ class MusicCog(commands.Cog):
             cmds, key=lambda x: (x.__original_kwargs__.get("priority", 999), x.name)
         )
         for command in sorted_commands:
-            embed.add_field(
-                name=f"!{command.name}",
-                value=command.help or "",
-                inline=False,
-            )
+            embed.add_field(name=f"!{command.name}", value=command.help or "", inline=False)
         await ctx.reply(embed=embed)
 
     @commands.command(hidden=True)
@@ -697,19 +683,33 @@ class MusicCog(commands.Cog):
 
     async def play_current(self, vc):
         mp = self.get_music_player(vc)
-        vc.play(
-            mp.current_song.playback,
-            after=lambda e: (
-                log.error(
-                    f"Voice playback error: {e}\n(GuildID: {vc.guild.id})", exc_info=e
-                )
-                if e
-                else self.bot.loop.create_task(self.next_song(vc.guild.id))
-            ),
-        )
+        if not mp.current_song.playback:
+            log.warning(
+                f"play_current: no playback for current song. Requested {mp.current_song.requested_by is not None}\nAttempting to download again"
+            )
+            mp.current_song.download()
+            if not mp.current_song.playback:
+                log.error(f"play_current: could not download the song {mp.current_song.song_info}")
+
+        mp.apply_effects_board()
+        try:
+            vc.play(mp.current_song.playback, after=lambda e: self.playback_end(vc, e))
+        except Exception as e:
+            playback_size = (
+                len(mp.current_song.playback.buffer) if mp.current_song.playback else None
+            )
+            log.error(
+                f"play_current: could not start the playback error: {e}\nPlayback size {playback_size}\nSong data: {mp.current_song.song_info}"
+            )
         if self.updatestatus:
             song_name = mp.current_song.song_name()
             await vc.channel.edit(status=song_name)
+
+    def playback_end(self, vc, error):
+        if error:
+            log.error(f"Error during playback: {error}", exc_info=error)
+
+        self.bot.loop.create_task(self.next_song(vc.guild.id))
 
     async def next_song(self, guild_id: int):
         log.info(f"next_song: attempt (GuildID: {guild_id})")
@@ -719,17 +719,16 @@ class MusicCog(commands.Cog):
         if not vc or not mp:
             return
         log.info(f"next_song: playing next song (GuildID: {guild_id})")
+        # Force refill if no songs in cache (shouldn't really happen ever)
         if len(mp.requests_cache) == 0 and len(mp.cache) == 0:
             mp.refill(True)
 
+        mp.refill()
         await asyncio.sleep(2)
         mp.load_next_song()
         await self.play_current(vc)
-        mp.refill()
 
-    def get_song_embed(
-        _, song_info, last_section: str | None = None, footer: str | None = None
-    ):
+    def get_song_embed(_, song_info, last_section: str | None = None, footer: str | None = None):
         original_by = " & ".join(song_info["originalArtists"])
         date = datetime.fromisoformat(song_info["streamDate"]).strftime("%B %d, %Y")
         minutes, seconds = divmod(song_info["duration"], 60)
@@ -754,9 +753,7 @@ class MusicCog(commands.Cog):
         description = f"Cover by {cover_str}\n\nOriginal by {original_by}\n\nStream date: {date}\n{minutes}:{seconds:02} {play_count} plays"
         if last_section:
             description += f"\n\n{last_section}"
-        embed = discord.Embed(
-            title=song_name, description=description, color=color, url=song_url
-        )
+        embed = discord.Embed(title=song_name, description=description, color=color, url=song_url)
         if song_info["coverArt"] and "absolutePath" in song_info["coverArt"]:
             image_url = IMAGES_URL
             image_url += song_info["coverArt"]["absolutePath"]
@@ -819,9 +816,7 @@ class MusicCog(commands.Cog):
                 if mp.alone_counter > PAUSE_AFTER:
                     vc.pause()
                     mp.pause()
-                    await vc.channel.send(
-                        f"No one around {emote(EMOTES.SAD)}\nPaused ⏸️"
-                    )
+                    await vc.channel.send(f"No one around {emote(EMOTES.SAD)}\nPaused ⏸️")
 
 
 class MyBot(commands.Bot):
@@ -850,19 +845,12 @@ class MyBot(commands.Bot):
 
     async def on_command_error(self, ctx, error):
         if isinstance(
-            error,
-            (
-                commands.CommandNotFound,
-                commands.CheckFailure,
-                commands.CommandOnCooldown,
-            ),
+            error, (commands.CommandNotFound, commands.CheckFailure, commands.CommandOnCooldown)
         ):
             return
 
         if isinstance(error, commands.MissingRequiredArgument):
-            await ctx.reply(
-                f"Missing argument: {error.param.name} {emote(EMOTES.SIDE_EYE)}"
-            )
+            await ctx.reply(f"Missing argument: {error.param.name} {emote(EMOTES.SIDE_EYE)}")
             return
 
         log.error(f"Error in command '{ctx.command}':", exc_info=error)
@@ -871,17 +859,10 @@ class MyBot(commands.Bot):
 timestamp = datetime.now().strftime("%y%m%d-%H%M%S")
 log_filename = f"neurokaraoke_{timestamp}.log"
 handler = logging.FileHandler(filename=log_filename, encoding="utf-8", mode="w")
-formatter = logging.Formatter(
-    "[{asctime}] [{levelname:<8}] {name}: {message}", style="{"
-)
+formatter = logging.Formatter("[{asctime}] [{levelname:<8}] {name}: {message}", style="{")
 handler.setFormatter(formatter)
 bot = MyBot()
 print("Starting up")
 load_dotenv()
-bot.run(
-    os.getenv("BOT_TOKEN"),
-    log_handler=handler,
-    log_formatter=formatter,
-    root_logger=True,
-)
+bot.run(os.getenv("BOT_TOKEN"), log_handler=handler, log_formatter=formatter, root_logger=True)
 print("Shutting down")
