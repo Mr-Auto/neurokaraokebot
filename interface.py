@@ -10,8 +10,6 @@ import time
 import random
 import numpy
 import sys
-import os
-from dotenv import load_dotenv
 from enum import Enum
 from collections import deque
 from datetime import datetime
@@ -624,19 +622,19 @@ class MusicCog(commands.Cog):
 
     @commands.command(hidden=True)
     @commands.is_owner()
-    async def restart(_, ctx):
+    async def restart(self, ctx):
         await ctx.send(f"Goodbye {emote(EMOTES.SAD)}")
         creationflags = 0
         if sys.platform == "win32":
             creationflags = subprocess.CREATE_NEW_CONSOLE
         subprocess.Popen([sys.executable] + sys.argv, creationflags=creationflags)
-        await bot.close()
+        await self.bot.close()
 
     @commands.command(hidden=True)
     @commands.is_owner()
-    async def exit(_, ctx):
+    async def exit(self, ctx):
         await ctx.send(f"Goodbye {emote(EMOTES.SAD)}")
-        await bot.close()
+        await self.bot.close()
 
     @commands.command()
     @cmd_verify(True)
@@ -822,52 +820,3 @@ class MusicCog(commands.Cog):
                     vc.pause()
                     mp.pause()
                     await vc.channel.send(f"No one around {emote(EMOTES.SAD)}\nPaused ⏸️")
-
-
-class MyBot(commands.Bot):
-    def __init__(self):
-        intents = discord.Intents.default()
-        intents.message_content = True
-        super().__init__(command_prefix="!", intents=intents, help_command=None)
-
-    async def setup_hook(self):
-        await self.add_cog(MusicCog(self))
-
-    async def on_ready(self):
-        log.info(f"Logged in as {self.user} (ID: {self.user.id})")
-        print(f"Logged in as {self.user} (ID: {self.user.id})")
-        print(f"Connected to {len(self.guilds)} servers:")
-        for guild in self.guilds:
-            print(f"- {guild.name} (ID: {guild.id})")
-        print("\n")
-
-    async def on_guild_join(_, guild):
-        print(f"\nI have been added to a new server: {guild.name} (ID: {guild.id})\n")
-        for channel in guild.text_channels:
-            if "general" in channel.name.lower():
-                await channel.send(emote(EMOTES.WAVE))
-                break
-
-    async def on_command_error(self, ctx, error):
-        if isinstance(
-            error, (commands.CommandNotFound, commands.CheckFailure, commands.CommandOnCooldown)
-        ):
-            return
-
-        if isinstance(error, commands.MissingRequiredArgument):
-            await ctx.reply(f"Missing argument: {error.param.name} {emote(EMOTES.SIDE_EYE)}")
-            return
-
-        log.error(f"Error in command '{ctx.command}':", exc_info=error)
-
-
-timestamp = datetime.now().strftime("%y%m%d-%H%M%S")
-log_filename = f"neurokaraoke_{timestamp}.log"
-handler = logging.FileHandler(filename=log_filename, encoding="utf-8", mode="w")
-formatter = logging.Formatter("[{asctime}] [{levelname:<8}] {name}: {message}", style="{")
-handler.setFormatter(formatter)
-bot = MyBot()
-print("Starting up")
-load_dotenv()
-bot.run(os.getenv("BOT_TOKEN"), log_handler=handler, log_formatter=formatter, root_logger=True)
-print("Shutting down")
