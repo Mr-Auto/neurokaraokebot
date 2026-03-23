@@ -5,6 +5,7 @@ import numpy
 import logging
 import asyncio
 import requests
+import json
 from pedalboard import (
     Pedalboard,
     LowpassFilter,
@@ -149,6 +150,9 @@ class Song:
         self.playback = PCMSource(song_url)
         if not self.has_playback():
             log.error(f"Song.download: could not load song\n song data: {self.song_info}")
+
+    def dump_json(self, indent=4) -> str:
+        return json.dump(self.song_info, indent=indent)
 
 
 class MusicPlayer:

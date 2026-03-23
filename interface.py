@@ -432,11 +432,11 @@ class MusicCog(commands.Cog):
         mp = self.get_music_player(vc)
         if not mp.current_song.has_playback():
             log.warning(
-                f"play_current: no playback for current song. Requested {mp.current_song.requested_by is not None}\nAttempting to download again"
+                f"play_current: no playback for current song. Requested ({mp.current_song.requested_by is not None}) Attempting to download again"
             )
             mp.current_song.download()
             if not mp.current_song.has_playback():
-                log.error(f"play_current: could not download the song {mp.current_song.song_info}")
+                log.error(f"play_current: could not download the song {mp.current_song.dump_json()}")
 
         mp.apply_effects_board()
         try:
@@ -446,8 +446,9 @@ class MusicCog(commands.Cog):
                 len(mp.current_song.playback.buffer) if mp.current_song.has_playback() else None
             )
             log.error(
-                f"play_current: could not start the playback error: {e}\nPlayback size {playback_size}\nSong data: {mp.current_song.song_info}"
+                f"play_current: could not start the playback error: ({e}) Playback size: {playback_size} Song data:"
             )
+            log.error(mp.current_song.dump_json())
             self.playback_end(vc, None)
         else:
             if self.updatestatus:
