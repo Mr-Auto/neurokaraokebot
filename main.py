@@ -7,7 +7,7 @@ from config import EMOTES
 from dotenv import load_dotenv
 from datetime import datetime
 
-log = logging.getLogger("discord")
+log = logging.getLogger("main")
 
 
 class MyBot(commands.Bot):
@@ -28,7 +28,7 @@ class MyBot(commands.Bot):
         print("\n")
 
     async def on_guild_join(_, guild):
-        print(f"\nI have been added to a new server: {guild.name} (ID: {guild.id})\n")
+        log.info(f"I have been added to a new server: {guild.name}[{guild.id}]")
         for channel in guild.text_channels:
             if "general" in channel.name.lower():
                 await channel.send(emote(EMOTES.WAVE))
@@ -45,6 +45,11 @@ class MyBot(commands.Bot):
             return
 
         log.error(f"Error in command '{ctx.command}':", exc_info=error)
+
+    async def on_command(self, ctx):
+        log.info(
+            f"Command '!{ctx.command}' used by: {ctx.author}[{ctx.author.id}] in channel: {ctx.channel}[{ctx.channel.id}] server: {ctx.guild}[{ctx.guild.id}]"
+        )
 
 
 timestamp = datetime.now().strftime("%y%m%d-%H%M%S")

@@ -22,7 +22,7 @@ from itertools import chain, islice
 from config import MAX_CACHE, STORAGE_URL, RANDOM_API
 
 
-log = logging.getLogger("discord")
+log = logging.getLogger("player")
 
 
 def format_song_name(json_data) -> str:

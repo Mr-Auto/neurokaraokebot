@@ -25,7 +25,7 @@ from player import MusicPlayer, Song, fetch_json_data
 from pedalboard import LowShelfFilter
 
 
-log = logging.getLogger("discord")
+log = logging.getLogger("interface")
 
 
 class CoverBy(Enum):
@@ -242,7 +242,9 @@ class MusicCog(commands.Cog):
         next_song = mp.get_next_song()
         if not next_song:
             await ctx.reply(f"No song's in the queue? {emote(EMOTES.SILLY)}")
-            log.info(f"nextsong: No songs in the queue WTF?! (GuildID: {ctx.guild.id})")
+            log.info(
+                f"nextsong: No songs in the queue WTF?! server: {ctx.guild.name}[{ctx.guild.id}]"
+            )
             return
 
         requested_by = next_song.requested_by or self.bot.user.name
@@ -413,7 +415,7 @@ class MusicCog(commands.Cog):
 
         if self.music_players.get(ctx.guild.id):
             self.music_players[ctx.guild.id] = None
-            log.info(f"MusicPlayer: reset (GuildID: {ctx.guild.id})")
+            log.warning(f"Start: overwriting music player, server: {ctx.guild.name}[{ctx.guild.id}]")
         vc.stop()
         start_wait = time.perf_counter()
 
@@ -426,6 +428,9 @@ class MusicCog(commands.Cog):
         await asyncio.sleep(remaining)
         await self.play_current(vc)
         await ctx.send(f"Now playing `{song_name}` {emote(EMOTES.JAM)}")
+        log.info(
+            f"Starting karaoke in: {ctx.channel.name}[{ctx.channel.id}] server: {ctx.guild.name}[{ctx.guild.id}]"
+        )
         new_mp.refill()
 
     async def play_current(self, vc):
@@ -436,7 +441,11 @@ class MusicCog(commands.Cog):
             )
             mp.current_song.download()
             if not mp.current_song.has_playback():
-                log.error(f"play_current: could not download the song {mp.current_song.dump_json()}")
+                log.error(
+                    f"play_current: could not download the song: {mp.current_song.dump_json()}"
+                )
+                self.playback_end(vc, None)
+                return
 
         mp.apply_effects_board()
         try:
@@ -467,13 +476,14 @@ class MusicCog(commands.Cog):
         # Do not try to load next song if not in vc or no player (probably restarting)
         if not vc or not mp:
             return
-        log.info(f"next_song: playing next song (GuildID: {guild_id})")
         # Force refill if no songs in cache (shouldn't really happen ever)
         if len(mp.requests_cache) == 0 and len(mp.cache) == 0:
+            log.warning(f"next_song: forcing refill (GuildID: {guild_id})")
             mp.refill(True)
 
         mp.refill()
         await asyncio.sleep(2)
+        log.info(f"next_song: load and play next song (GuildID: {guild_id})")
         mp.load_next_song()
         await self.play_current(vc)
 
@@ -515,32 +525,36 @@ class MusicCog(commands.Cog):
     async def on_voice_state_update(self, member, before, after):
         if member.id == self.bot.user.id:
             if before.channel is not None and after.channel is None:
-                log.info(f"Disconnected from voice channel '{before.channel}'")
+                log.warning(
+                    f"Disconnected from voice channel: {before.channel}[{before.channel.id}]"
+                )
                 guild_id = before.channel.guild.id
                 mp = self.music_players.get(guild_id)
                 if not mp:
                     return
-                log.info("Detected active playback, attempting to resume")
                 mp.pause()
+                log.info("Detected active playback, attempting to resume")
                 await asyncio.sleep(1)
                 vc = await before.channel.connect(reconnect=False)
-                # We use play current that will continue playing the song
+                # We use play_current that will continue playing the song
                 # Even if alone_counter is met, we need to start playback to put it in valid pause state
                 await self.play_current(vc)
                 if mp.alone_counter > PAUSE_AFTER:
                     vc.pause()
                 else:
+                    # wait a little before resuming
+                    await asyncio.sleep(0.2)
                     mp.resume()
             elif before.channel is None and after.channel is not None:
-                log.info(f"Connected to voice channel '{after.channel}'")
+                log.info(f"Connected to voice channel: {after.channel}[{after.channel.id}]")
             elif before.mute != after.mute:
                 guild_id = before.channel.guild.id
                 mp = self.music_players.get(guild_id)
                 if not mp:
                     return
                 if after.mute:
-                    await after.channel.send(f"🔇 {emote(EMOTES.SAD)}")
                     mp.pause()
+                    await after.channel.send(f"🔇 {emote(EMOTES.SAD)}")
                 else:
                     await after.channel.send(f"🔊 {emote(EMOTES.HAPPY)}")
                     mp.resume()
