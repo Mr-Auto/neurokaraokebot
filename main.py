@@ -1,6 +1,6 @@
-import discord
 import logging
 import os
+from discord import Intents
 from discord.ext import commands
 from interface import MusicCog, emote
 from config import EMOTES
@@ -12,8 +12,7 @@ log = logging.getLogger("main")
 
 class MyBot(commands.Bot):
     def __init__(self):
-        intents = discord.Intents.default()
-        intents.message_content = True
+        intents = Intents(guilds=True, message_content=True, voice_states=True, guild_messages=True)
         super().__init__(command_prefix="!", intents=intents, help_command=None)
 
     async def setup_hook(self):
