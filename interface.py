@@ -379,12 +379,14 @@ class MusicCog(commands.Cog):
         if sys.platform == "win32":
             creationflags = subprocess.CREATE_NEW_CONSOLE
         subprocess.Popen([sys.executable] + sys.argv, creationflags=creationflags)
+        self.music_players = {}
         await self.bot.close()
 
     @commands.command(hidden=True)
     @commands.is_owner()
     async def exit(self, ctx):
         await ctx.send(f"Goodbye {emote(EMOTES.SAD)}")
+        self.music_players = {}
         await self.bot.close()
 
     @commands.command()
