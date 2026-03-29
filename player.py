@@ -6,6 +6,7 @@ import logging
 import asyncio
 import requests
 import json
+import time
 from pedalboard import (
     Pedalboard,
     LowpassFilter,
@@ -47,7 +48,7 @@ def fetch_json_data(url: str, get=None, post=None, retries=3):
         except (requests.exceptions.RequestException, ValueError) as e:
             log.info(f"Attempt {i + 1} failed: {e}")
             if i < retries - 1:
-                asyncio.sleep(2)
+                time.sleep(2)
             else:
                 log.info("All retry attempts failed.")
 

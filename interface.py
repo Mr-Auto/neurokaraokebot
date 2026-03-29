@@ -8,6 +8,7 @@ import time
 import random
 import numpy
 import sys
+import json
 from enum import Enum
 from datetime import datetime
 from itertools import chain, islice
@@ -62,7 +63,7 @@ def is_number(s: str) -> bool:
 
 
 # check if command is allowed in certain situation.
-# This also disabled the message event about missing parameter as it needs it satisfy this condition first
+# This also disabled the message event about missing parameter as it needs to satisfy this condition first
 def cmd_verify(allowed_channels=False):
     async def predicate(ctx):
         if allowed_channels and ctx.channel.id in ALLOWED_CHANNELS:
@@ -74,6 +75,15 @@ def cmd_verify(allowed_channels=False):
     return commands.check(predicate)
 
 
+def song_search(**kwargs) -> list | None:
+    # sort by available:
+    # Title PlayCount KaraokeDate Duration
+    # all available keys:
+    # {"search":"text","page": 1,"pageSize": 10,"sortBy":"KaraokeDate","sortDesc": True,"sortDesc":false,"genreIds":null,"themeIds":null,"moodIds":null,"artistIds":null,
+    # "coverArtistIds":null,"languageIds":null,"energyLevel":null,"tempo":null,"key":null,"karaokeStart":null,"karaokeEnd":null}
+    return fetch_json_data(SEARCH_API, post=kwargs)
+
+
 class MusicCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -82,6 +92,7 @@ class MusicCog(commands.Cog):
 
     def cog_unload(self):
         self.check_alone_status.cancel()
+        self.music_players = {}
 
     @commands.command(priority=1)
     async def karaokehere(self, ctx):
@@ -286,28 +297,18 @@ class MusicCog(commands.Cog):
 
     @commands.command(priority=8)
     @cmd_verify()
-    async def sr(self, ctx, *, search):
+    async def sr(self, ctx, *, search_string):
         """Song request"""
-        data = {
-            "search": search,
-            "page": 1,
-            "pageSize": 1,
-            "sortBy": "KaraokeDate",
-            "sortDesc": True,
-        }
-        # sort by available:
-        # Title PlayCount KaraokeDate Duration
-        # other available keys:
-        # {"sortDesc":false,"genreIds":null,"themeIds":null,"moodIds":null,"artistIds":null,
-        # "coverArtistIds":null,"languageIds":null,"energyLevel":null,"tempo":null,"key":null,"karaokeStart":null,"karaokeEnd":null}
-        response = fetch_json_data(SEARCH_API, post=data)
+        response = song_search(
+            search=search_string, page=1, pageSize=1, sortBy="KaraokeDate", sortDesc=True
+        )
         if not response or "items" not in response:
             await ctx.reply(f"Got empty request back {emote(EMOTES.SAD)}")
             return
 
         result_list = response["items"]
         if len(result_list) == 0:
-            await ctx.reply(f"No results for `{search}` {emote(EMOTES.SIDE_EYE)}")
+            await ctx.reply(f"No results for `{search_string}` {emote(EMOTES.SIDE_EYE)}")
             return
 
         mp = self.get_music_player(ctx)
@@ -406,6 +407,31 @@ class MusicCog(commands.Cog):
                     message = ""
             if message:
                 await ctx.reply(message)
+
+    @commands.command()
+    @cmd_verify(True)
+    async def findsong(self, ctx, search_string: str):
+        response = song_search(
+            search=search_string, page=1, pageSize=10, sortBy="KaraokeDate", sortDesc=True
+        )
+        if not response or "items" not in response:
+            await ctx.reply(f"Got empty request back {emote(EMOTES.SAD)}")
+            return
+
+        result_list = response["items"]
+        if len(result_list) == 0:
+            await ctx.reply(f"No results for `{search_string}` {emote(EMOTES.SIDE_EYE)}")
+            return
+
+        embed = discord.Embed(title="Results:", color=discord.Color.orange())
+        embed.description = ""
+        for idx, song_data in enumerate(result_list):
+            song = Song(song_data)
+            song_url = SONG_URL + song.get_id()
+            embed.description += f"{idx + 1}. [{song.song_name()}]({song_url})\n"
+            date = datetime.fromisoformat(song_data["streamDate"]).strftime("%B %d, %Y")
+            embed.description += f"-# {date}\n"
+        await ctx.reply(embed=embed)
 
     def get_music_player(self, ctx) -> MusicPlayer:
         return self.music_players.get(ctx.guild.id)
