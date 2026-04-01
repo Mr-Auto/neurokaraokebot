@@ -8,7 +8,6 @@ import time
 import random
 import numpy
 import sys
-import json
 from enum import Enum
 from datetime import datetime
 from itertools import chain, islice
@@ -19,11 +18,11 @@ from config import (
     PAUSE_AFTER,
     SEARCH_API,
     RANDOM_API,
-    SONG_URL,
     IMAGES_URL,
 )
 from player import MusicPlayer, Song, fetch_json_data
 from pedalboard import LowShelfFilter
+from song_lookup_view import SongLookupView
 
 
 log = logging.getLogger("interface")
@@ -312,17 +311,13 @@ class MusicCog(commands.Cog):
             return
 
         mp = self.get_music_player(ctx)
-        song_remaining = mp.current_song.remaning()
-        if song_remaining is None:
-            log.error("sr: No playback for the current song")
-            song_remaining = 0
-
+        song_remaining = mp.current_song.remaning() or 0
         playing_in = int(time.time()) + mp.request_queue_duration() + song_remaining + 2
         requested_song = Song(result_list[0], ctx.author.name)
         mp.requests_cache.append(requested_song)
         song_name = requested_song.song_name()
         await ctx.reply(
-            f"Added `{song_name}` at position {len(mp.requests_cache)} in the queue\nPlaying in <t:{playing_in}:R>"
+            f"Added `{song_name}` at position {len(mp.requests_cache)} in the queue\nPlaying <t:{playing_in}:R>"
         )
         mp.refill()
 
@@ -411,8 +406,10 @@ class MusicCog(commands.Cog):
     @commands.command()
     @cmd_verify(True)
     async def findsong(self, ctx, search_string: str):
+        # we pull max 99 songs since the view shows up to 9 songs at once
+        # it thorws error at us if we try to show 10
         response = song_search(
-            search=search_string, page=1, pageSize=10, sortBy="KaraokeDate", sortDesc=True
+            search=search_string, page=1, pageSize=99, sortBy="KaraokeDate", sortDesc=True
         )
         if not response or "items" not in response:
             await ctx.reply(f"Got empty request back {emote(EMOTES.SAD)}")
@@ -423,15 +420,9 @@ class MusicCog(commands.Cog):
             await ctx.reply(f"No results for `{search_string}` {emote(EMOTES.SIDE_EYE)}")
             return
 
-        embed = discord.Embed(title="Results:", color=discord.Color.orange())
-        embed.description = ""
-        for idx, song_data in enumerate(result_list):
-            song = Song(song_data)
-            song_url = SONG_URL + song.get_id()
-            embed.description += f"{idx + 1}. [{song.song_name()}]({song_url})\n"
-            date = datetime.fromisoformat(song_data["streamDate"]).strftime("%B %d, %Y")
-            embed.description += f"-# {date}\n"
-        await ctx.reply(embed=embed)
+        request_allowed = ctx.voice_client and ctx.voice_client.channel.id == ctx.channel.id
+        view = SongLookupView(result_list, request_allowed, ctx.author.id)
+        view.message = await ctx.reply(view=view, content=None, embed=None, file=None)
 
     def get_music_player(self, ctx) -> MusicPlayer:
         return self.music_players.get(ctx.guild.id)
@@ -519,8 +510,8 @@ class MusicCog(commands.Cog):
         original_by = " & ".join(song_info["originalArtists"])
         date = datetime.fromisoformat(song_info["streamDate"]).strftime("%B %d, %Y")
         minutes, seconds = divmod(song_info["duration"], 60)
-        song_url = SONG_URL + song_info["id"]
-
+        song = Song(song_info)
+        song_url = song.get_url()
         cover_str = " & ".join(song_info["coverArtists"])
         cover_by = parse_cover_by(cover_str)
 
@@ -536,7 +527,7 @@ class MusicCog(commands.Cog):
                 color = COLORS.EVIL
 
         play_count = song_info["playCount"]
-        song_name = Song(song_info).song_name()
+        song_name = song.song_name()
         description = f"Cover by {cover_str}\n\nOriginal by {original_by}\n\nStream date: {date}\n{minutes}:{seconds:02} {play_count} plays"
         if last_section:
             description += f"\n\n{last_section}"

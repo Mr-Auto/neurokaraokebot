@@ -20,7 +20,7 @@ from pedalboard import (
 )
 from collections import deque
 from itertools import chain, islice
-from config import MAX_CACHE, STORAGE_URL, RANDOM_API
+from config import MAX_CACHE, STORAGE_URL, RANDOM_API, SONG_URL
 
 
 log = logging.getLogger("player")
@@ -140,8 +140,11 @@ class Song:
     def song_name(self) -> str:
         return format_song_name(self.song_info)
 
-    def get_id(self) -> int:
+    def get_id(self) -> str:
         return self.song_info["id"]
+
+    def get_url(self) -> str:
+        return SONG_URL + self.song_info["id"]
 
     def remaning(self) -> int | None:
         return self.playback.remaining() if self.has_playback() else None
