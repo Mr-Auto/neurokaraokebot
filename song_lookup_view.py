@@ -14,6 +14,18 @@ class RequestButton(ui.Button):
         self.song_data = song_data
 
     async def callback(self, interaction: discord.Interaction):
+        if not interaction.guild.voice_client:
+            await interaction.response.send_message("Bot not in VC", ephemeral=True)
+            return
+        if (
+            not interaction.user.voice
+            or interaction.user.voice.channel.id != interaction.guild.voice_client.channel.id
+        ):
+            await interaction.response.send_message(
+                "You have to be in VC to use this!", ephemeral=True
+            )
+            return
+
         self.song_data["_requested"] = True
         self.disabled = True
         await interaction.response.edit_message(view=self.view)
