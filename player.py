@@ -199,8 +199,8 @@ class MusicPlayer:
         else:
             return None
 
-    def refill(self, force_await=False):
-        if force_await:
+    def refill(self, force_wait=False):
+        if force_wait:
             log.warning("refill: Forcing refill, expect latency increase")
             self._refill_queue()
             return

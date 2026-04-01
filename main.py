@@ -33,7 +33,7 @@ class MyBot(commands.Bot):
                 await channel.send(emote(EMOTES.WAVE))
                 break
 
-    async def on_command_error(self, ctx, error):
+    async def on_command_error(self, ctx: commands.Context, error: commands.CommandError):
         if isinstance(
             error, (commands.CommandNotFound, commands.CheckFailure, commands.CommandOnCooldown)
         ):
@@ -49,7 +49,7 @@ class MyBot(commands.Bot):
 
         log.error(f"Error in command '{ctx.command}':", exc_info=error)
 
-    async def on_command(self, ctx):
+    async def on_command(self, ctx: commands.Context):
         log.info(
             f"Command '!{ctx.command}' used by: {ctx.author}[{ctx.author.id}] in channel: {ctx.channel}[{ctx.channel.id}] server: {ctx.guild}[{ctx.guild.id}]"
         )

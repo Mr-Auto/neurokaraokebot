@@ -68,7 +68,7 @@ class NotAllowedError(commands.CommandError):
 # check if command is allowed in certain situation.
 # This also disabled the message event about missing parameter as it needs to satisfy this condition first
 def cmd_verify(allowed_channels=False):
-    async def predicate(ctx):
+    async def predicate(ctx: commands.Context):
         extra = ""
         if allowed_channels:
             extra = " or in allowed channels"
@@ -101,7 +101,7 @@ def song_search(**kwargs) -> list | None:
 
 
 class MusicCog(commands.Cog):
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.music_players = {}
         self.check_alone_status.start()
@@ -111,7 +111,7 @@ class MusicCog(commands.Cog):
         self.music_players = {}
 
     @commands.command(priority=1)
-    async def karaokehere(self, ctx):
+    async def karaokehere(self, ctx: commands.Context):
         """Invite bot to VC"""
         mp = self.get_music_player(ctx)
         if ctx.voice_client or mp:
@@ -126,7 +126,7 @@ class MusicCog(commands.Cog):
 
     @commands.command(priority=2)
     @cmd_verify()
-    async def pause(self, ctx):
+    async def pause(self, ctx: commands.Context):
         vc = ctx.voice_client
         if vc.is_playing():
             vc.pause()
@@ -135,7 +135,7 @@ class MusicCog(commands.Cog):
 
     @commands.command(priority=2)
     @cmd_verify()
-    async def resume(self, ctx):
+    async def resume(self, ctx: commands.Context):
         vc = ctx.voice_client
         if vc.is_paused():
             vc.resume()
@@ -144,7 +144,7 @@ class MusicCog(commands.Cog):
 
     @commands.command()
     @cmd_verify()
-    async def reconnect(self, ctx):
+    async def reconnect(self, ctx: commands.Context):
         """Reset the bot and reconnect to this VC (kills the queue)"""
         mp = self.get_music_player(ctx)
         self.music_players[ctx.guild.id] = None
@@ -160,7 +160,7 @@ class MusicCog(commands.Cog):
 
     @commands.command(priority=4)
     @cmd_verify()
-    async def volume(self, ctx, vol: float):
+    async def volume(self, ctx: commands.Context, vol: float):
         """Change the volume"""
         mp = self.get_music_player(ctx)
         vol = numpy.clip(vol, 0, 300.0)
@@ -172,7 +172,7 @@ class MusicCog(commands.Cog):
 
     @commands.command(priority=4)
     @cmd_verify()
-    async def bass(self, ctx, value: str):
+    async def bass(self, ctx: commands.Context, value: str):
         """Change bass [boost, reset, number in db]"""
         if not value:
             return
@@ -215,7 +215,7 @@ class MusicCog(commands.Cog):
     @commands.command(priority=8)
     @cmd_verify()
     @commands.cooldown(1, 5)
-    async def skip(self, ctx):
+    async def skip(self, ctx: commands.Context):
         """Skip current song"""
         next_song = self.get_music_player(ctx).get_next_song()
         vc = ctx.voice_client
@@ -234,7 +234,7 @@ class MusicCog(commands.Cog):
 
     @commands.command(priority=6)
     @cmd_verify()
-    async def song(self, ctx):
+    async def song(self, ctx: commands.Context):
         """Check current song"""
         mp = self.get_music_player(ctx)
         requested_by = mp.current_song.requested_by or self.bot.user.name
@@ -262,7 +262,7 @@ class MusicCog(commands.Cog):
 
     @commands.command(priority=6)
     @cmd_verify()
-    async def nextsong(self, ctx):
+    async def nextsong(self, ctx: commands.Context):
         """Check the next song"""
         next_song = None
         mp = self.get_music_player(ctx)
@@ -299,7 +299,7 @@ class MusicCog(commands.Cog):
 
     @commands.command(priority=5)
     @cmd_verify()
-    async def queue(self, ctx):
+    async def queue(self, ctx: commands.Context):
         """Current queue (next 10 songs)"""
         mp = self.get_music_player(ctx)
 
@@ -313,7 +313,7 @@ class MusicCog(commands.Cog):
 
     @commands.command(priority=8)
     @cmd_verify()
-    async def sr(self, ctx, *, search_string):
+    async def sr(self, ctx: commands.Context, *, search_string: str):
         """Song request"""
         response = song_search(
             search=search_string, page=1, pageSize=1, sortBy="KaraokeDate", sortDesc=True
@@ -340,7 +340,7 @@ class MusicCog(commands.Cog):
 
     @commands.command()
     @cmd_verify(True)
-    async def randomsong(self, ctx):
+    async def randomsong(self, ctx: commands.Context):
         """Random song from neurokaraoke.com"""
         data = fetch_json_data(RANDOM_API)
         if not data or not isinstance(data, list) or len(data) == 0:
@@ -351,7 +351,7 @@ class MusicCog(commands.Cog):
 
     @commands.command(priority=7)
     @cmd_verify()
-    async def updatestatus(self, ctx, update: bool):
+    async def updatestatus(self, ctx: commands.Context, update: bool):
         """Disable/enable bot updating VC status with song name"""
         if self.updatestatus != update:
             if update:
@@ -365,7 +365,7 @@ class MusicCog(commands.Cog):
 
     @commands.command(priority=3)
     @cmd_verify()
-    async def resetmodifiers(self, ctx):
+    async def resetmodifiers(self, ctx: commands.Context):
         """Reset all song modifiers, like bass, volume etc."""
         mp = self.get_music_player(ctx)
         mp.clear_modifiers()
@@ -373,7 +373,7 @@ class MusicCog(commands.Cog):
 
     @commands.command(name="commands", hidden=True)
     @cmd_verify(True)
-    async def commands_list(self, ctx):
+    async def commands_list(self, ctx: commands.Context):
         """List of all commands"""
         embed = discord.Embed(title="Command List", color=discord.Color.orange())
         cmds = [c for c in self.bot.commands if not c.hidden]
@@ -386,7 +386,7 @@ class MusicCog(commands.Cog):
 
     @commands.command(hidden=True)
     @commands.is_owner()
-    async def restart(self, ctx):
+    async def restart(self, ctx: commands.Context):
         await ctx.send(f"Goodbye {emote(EMOTES.SAD)}")
         creationflags = 0
         if sys.platform == "win32":
@@ -397,15 +397,15 @@ class MusicCog(commands.Cog):
 
     @commands.command(hidden=True)
     @commands.is_owner()
-    async def exit(self, ctx):
+    async def exit(self, ctx: commands.Context):
         await ctx.send(f"Goodbye {emote(EMOTES.SAD)}")
         self.music_players = {}
         await self.bot.close()
 
-    @commands.command()
+    @commands.command(hidden=True)
     @cmd_verify(True)
     # @commands.is_owner()
-    async def emotes(self, ctx, group_name: str):
+    async def emotes(self, ctx: commands.Context, group_name: str):
         group_name = group_name.upper()
         if group_name not in EMOTES.__members__:
             await ctx.reply(f"So such group name {emote(EMOTES.SAD)}")
@@ -422,7 +422,7 @@ class MusicCog(commands.Cog):
 
     @commands.command()
     @cmd_verify(True)
-    async def findsong(self, ctx, search_string: str):
+    async def findsong(self, ctx: commands.Context, *, search_string: str):
         # we pull max 99 songs since the view shows up to 9 songs at once
         # it thorws error at us if we try to show 10
         response = song_search(
@@ -441,10 +441,10 @@ class MusicCog(commands.Cog):
         view = SongLookupView(result_list, request_allowed, ctx.author.id)
         view.message = await ctx.reply(view=view, content=None, embed=None, file=None)
 
-    def get_music_player(self, ctx) -> MusicPlayer:
+    def get_music_player(self, ctx: commands.Context) -> MusicPlayer:
         return self.music_players.get(ctx.guild.id)
 
-    async def start(self, ctx):
+    async def start(self, ctx: commands.Context):
         vc = ctx.voice_client
         if not vc:
             return
@@ -469,7 +469,7 @@ class MusicCog(commands.Cog):
         )
         new_mp.refill()
 
-    async def play_current(self, vc):
+    async def play_current(self, vc: discord.VoiceClient):
         mp = self.get_music_player(vc)
         if not mp.current_song.has_playback():
             log.warning(
@@ -500,7 +500,7 @@ class MusicCog(commands.Cog):
                 song_name = mp.current_song.song_name()
                 await vc.channel.edit(status=song_name)
 
-    def playback_end(self, vc, error):
+    def playback_end(self, vc: discord.VoiceClient, error):
         if error:
             log.error(f"Error during playback: {error}", exc_info=error)
         self.bot.loop.create_task(self.next_song(vc.guild.id))
@@ -523,7 +523,9 @@ class MusicCog(commands.Cog):
         mp.load_next_song()
         await self.play_current(vc)
 
-    def get_song_embed(_, song_info, last_section: str | None = None, footer: str | None = None):
+    def get_song_embed(
+        _, song_info: dict, last_section: str | None = None, footer: str | None = None
+    ):
         original_by = " & ".join(song_info["originalArtists"])
         date = datetime.fromisoformat(song_info["streamDate"]).strftime("%B %d, %Y")
         minutes, seconds = divmod(song_info["duration"], 60)
@@ -558,7 +560,9 @@ class MusicCog(commands.Cog):
         return embed
 
     @commands.Cog.listener()
-    async def on_voice_state_update(self, member, before, after):
+    async def on_voice_state_update(
+        self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState
+    ):
         if member.id == self.bot.user.id:
             if before.channel is not None and after.channel is None:
                 log.warning(
