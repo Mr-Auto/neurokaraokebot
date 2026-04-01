@@ -61,15 +61,32 @@ def is_number(s: str) -> bool:
         return False
 
 
+class NotAllowedError(commands.CommandError):
+    pass
+
+
 # check if command is allowed in certain situation.
 # This also disabled the message event about missing parameter as it needs to satisfy this condition first
 def cmd_verify(allowed_channels=False):
     async def predicate(ctx):
-        if allowed_channels and ctx.channel.id in ALLOWED_CHANNELS:
-            return True
+        extra = ""
+        if allowed_channels:
+            extra = " or in allowed channels"
+            if ctx.channel.id in ALLOWED_CHANNELS:
+                return True
         vc = ctx.voice_client
         mp = ctx.cog.get_music_player(ctx)
-        return vc and mp and ctx.channel.id == vc.channel.id
+        if not allowed_channels and (not vc or not mp):
+            raise NotAllowedError(f"Bot not running, use !karaokehere to invite it to VC")
+
+        if (
+            ctx.channel.id != vc.channel.id
+            or not ctx.author.voice
+            or ctx.author.voice.channel.id != vc.channel.id
+        ):
+            raise NotAllowedError(f"You can only use this command in VC with the bot{extra}")
+
+        return True
 
     return commands.check(predicate)
 

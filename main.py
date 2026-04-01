@@ -2,7 +2,7 @@ import logging
 import os
 from discord import Intents
 from discord.ext import commands
-from interface import MusicCog, emote
+from interface import MusicCog, emote, NotAllowedError
 from config import EMOTES
 from dotenv import load_dotenv
 from datetime import datetime
@@ -41,6 +41,10 @@ class MyBot(commands.Bot):
 
         if isinstance(error, commands.MissingRequiredArgument):
             await ctx.reply(f"Missing argument: {error.param.name} {emote(EMOTES.SIDE_EYE)}")
+            return
+
+        if isinstance(error, NotAllowedError):
+            await ctx.reply(f"❌ {error}", delete_after=5)
             return
 
         log.error(f"Error in command '{ctx.command}':", exc_info=error)
