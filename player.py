@@ -22,6 +22,8 @@ from collections import deque
 from itertools import chain, islice
 from config import MAX_CACHE, STORAGE_URL, RANDOM_API, SONG_URL
 
+# TODO fix deque mutated during iteration
+# keep in mind the forced feill, probably need to lock it for that
 
 log = logging.getLogger("player")
 
@@ -234,6 +236,9 @@ class MusicPlayer:
     def resume(self):
         if self.current_song.has_playback():
             self.current_song.playback.set_pause(False)
+
+    def is_paused(self) -> bool:
+        return self.current_song.has_playback() and self.current_song.playback.paused
 
     def clear_modifiers(self):
         self.effects_board = Pedalboard([])

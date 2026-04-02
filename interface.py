@@ -128,19 +128,19 @@ class MusicCog(commands.Cog):
     @cmd_verify()
     async def pause(self, ctx: commands.Context):
         vc = ctx.voice_client
+        self.get_music_player(ctx).pause()
         if vc.is_playing():
             vc.pause()
             await ctx.reply(f"Paused ⏸️ {emote(EMOTES.PAUSE)}")
-            self.get_music_player(ctx).pause()
 
     @commands.command(priority=2)
     @cmd_verify()
     async def resume(self, ctx: commands.Context):
         vc = ctx.voice_client
+        self.get_music_player(ctx).resume()
         if vc.is_paused():
             vc.resume()
             await ctx.reply(f"Resumed ▶️ {emote(EMOTES.JAM)}")
-            self.get_music_player(ctx).resume()
 
     @commands.command()
     @cmd_verify()
@@ -245,6 +245,8 @@ class MusicCog(commands.Cog):
         song_end = int(time.time()) + song_remaining
         footer = f'Requested by "{requested_by}"'
         note = f"Ends <t:{song_end}:R>"
+        if mp.is_paused():
+            note = "Ends `PAUSED`"
         embed = self.get_song_embed(mp.current_song.song_info, note, footer)
         cover_str = " & ".join(mp.current_song.song_info["coverArtists"])
         cover_by = parse_cover_by(cover_str)
@@ -281,7 +283,9 @@ class MusicCog(commands.Cog):
             return
         song_end = int(time.time()) + song_remaining + 2
         footer = f'Requested by "{requested_by}"'
-        note = f"Playing in: <t:{song_end}:R>"
+        note = f"Playing <t:{song_end}:R>"
+        if mp.is_paused():
+            note = "Playing `PAUSED`"
         embed = self.get_song_embed(next_song.song_info, note, footer)
         cover_str = " & ".join(next_song.song_info["coverArtists"])
         cover_by = parse_cover_by(cover_str)
@@ -330,11 +334,14 @@ class MusicCog(commands.Cog):
         mp = self.get_music_player(ctx)
         song_remaining = mp.current_song.remaning() or 0
         playing_in = int(time.time()) + mp.request_queue_duration() + song_remaining + 2
+        playing_in_str = f"<t:{playing_in}:R>"
+        if mp.is_paused():
+            playing_in_str = "`PAUSED`"
         requested_song = Song(result_list[0], ctx.author.name)
         mp.requests_cache.append(requested_song)
         song_name = requested_song.song_name()
         await ctx.reply(
-            f"Added `{song_name}` at position {len(mp.requests_cache)} in the queue\nPlaying <t:{playing_in}:R>"
+            f"Added `{song_name}` at position {len(mp.requests_cache)} in the queue\nPlaying {playing_in_str}"
         )
         mp.refill()
 
@@ -472,6 +479,7 @@ class MusicCog(commands.Cog):
     async def play_current(self, vc: discord.VoiceClient):
         mp = self.get_music_player(vc)
         if not mp.current_song.has_playback():
+            await vc.channel.send(emote(EMOTES.LOADING))
             log.warning(
                 f"play_current: no playback for current song. Requested ({mp.current_song.requested_by is not None}) Attempting to download again"
             )
@@ -572,14 +580,16 @@ class MusicCog(commands.Cog):
                 mp = self.music_players.get(guild_id)
                 if not mp:
                     return
+                was_paused = mp.is_paused()
                 mp.pause()
                 log.info("Detected active playback, attempting to resume")
                 await asyncio.sleep(1)
                 vc = await before.channel.connect(reconnect=False)
                 # We use play_current that will continue playing the song
                 # Even if alone_counter is met, we need to start playback to put it in valid pause state
+                # since the MusicPlayer is paused, it will send silence anyway
                 await self.play_current(vc)
-                if mp.alone_counter > PAUSE_AFTER:
+                if mp.alone_counter > PAUSE_AFTER or was_paused:
                     vc.pause()
                 else:
                     # wait a little before resuming
@@ -615,7 +625,7 @@ class MusicCog(commands.Cog):
             if not mp:
                 continue
             vc = guild.voice_client
-            if not vc or vc.is_paused():
+            if not vc or mp.is_paused() or vc.is_paused():
                 continue
             # includes the bot itself
             if len(vc.channel.members) < 2:
