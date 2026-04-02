@@ -187,11 +187,11 @@ class MusicCog(commands.Cog):
             mp.fix_limiter()
             await ctx.reply(f"Bass reset {emote(EMOTES.NWELIV)}")
             return
-        elif value and value.lower() == "boost":
+        elif value.lower() == "boost":
             gain_db = 4.0
         elif is_number(value):
             gain_db = float(value)
-        elif value:
+        else:
             await ctx.reply(f"Wrong parameter. Use [reset, boost or number] {emote(EMOTES.STARE)}")
             return
 
@@ -328,7 +328,12 @@ class MusicCog(commands.Cog):
 
         result_list = response["items"]
         if len(result_list) == 0:
-            await ctx.reply(f"No results for `{search_string}` {emote(EMOTES.SIDE_EYE)}")
+            char_limit = 20
+            if len(search_string) > char_limit:
+                truncated = search_string[:char_limit] + "..."
+            else:
+                truncated = search_string
+            await ctx.reply(f"No results for `{truncated}` {emote(EMOTES.SIDE_EYE)}")
             return
 
         mp = self.get_music_player(ctx)
@@ -413,6 +418,7 @@ class MusicCog(commands.Cog):
     @cmd_verify(True)
     # @commands.is_owner()
     async def emotes(self, ctx: commands.Context, group_name: str):
+        """Debug"""
         group_name = group_name.upper()
         if group_name not in EMOTES.__members__:
             await ctx.reply(f"So such group name {emote(EMOTES.SAD)}")
@@ -430,6 +436,7 @@ class MusicCog(commands.Cog):
     @commands.command()
     @cmd_verify(True)
     async def findsong(self, ctx: commands.Context, *, search_string: str):
+        """Lookup for specific song, allows request from the list if used in VC"""
         # we pull max 99 songs since the view shows up to 9 songs at once
         # it thorws error at us if we try to show 10
         response = song_search(
@@ -441,7 +448,12 @@ class MusicCog(commands.Cog):
 
         result_list = response["items"]
         if len(result_list) == 0:
-            await ctx.reply(f"No results for `{search_string}` {emote(EMOTES.SIDE_EYE)}")
+            char_limit = 20
+            if len(search_string) > char_limit:
+                truncated = search_string[:char_limit] + "..."
+            else:
+                truncated = search_string
+            await ctx.reply(f"No results for `{truncated}` {emote(EMOTES.SIDE_EYE)}")
             return
 
         request_allowed = ctx.voice_client and ctx.voice_client.channel.id == ctx.channel.id
