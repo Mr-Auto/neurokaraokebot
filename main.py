@@ -1,6 +1,6 @@
 import logging
 import os
-from discord import Intents
+from discord import Intents, Activity, ActivityType, StatusDisplayType
 from discord.ext import commands
 from interface import MusicCog, emote, NotAllowedError
 from config import EMOTES
@@ -13,7 +13,13 @@ log = logging.getLogger("main")
 class MyBot(commands.Bot):
     def __init__(self):
         intents = Intents(guilds=True, message_content=True, voice_states=True, guild_messages=True)
-        super().__init__(command_prefix="!", intents=intents, help_command=None)
+        activity = Activity(
+            name="Playing songs 🎵",
+            type=ActivityType.custom,
+            state="Playing songs 🎵",
+            status_display_type=StatusDisplayType.state,
+        )
+        super().__init__(command_prefix="!", intents=intents, help_command=None, activity=activity)
 
     async def setup_hook(self):
         await self.add_cog(MusicCog(self))
