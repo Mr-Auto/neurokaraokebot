@@ -2,7 +2,7 @@ import logging
 import os
 from discord import Intents, Activity, ActivityType, StatusDisplayType
 from discord.ext import commands
-from interface import MusicCog, emote, NotAllowedError
+from interface import MusicCog, NotAllowedError
 from config import EMOTES
 from dotenv import load_dotenv
 from datetime import datetime
@@ -36,7 +36,7 @@ class MyBot(commands.Bot):
         log.info(f"I have been added to a new server: {guild.name}[{guild.id}]")
         for channel in guild.text_channels:
             if "general" in channel.name.lower():
-                await channel.send(emote(EMOTES.WAVE))
+                await channel.send(EMOTES.WAVE)
                 break
 
     async def on_command_error(self, ctx: commands.Context, error: commands.CommandError):
@@ -46,7 +46,7 @@ class MyBot(commands.Bot):
             return
 
         if isinstance(error, commands.MissingRequiredArgument):
-            await ctx.reply(f"Missing argument: {error.param.name} {emote(EMOTES.SIDE_EYE)}")
+            await ctx.reply(f"Missing argument: {error.param.name} {EMOTES.SIDE_EYE}")
             return
 
         if isinstance(error, NotAllowedError):

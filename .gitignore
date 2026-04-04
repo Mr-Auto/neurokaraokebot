@@ -1,5 +1,5 @@
 .env
-config.py
+emotes.json
 *.log
 __pycache__/
 *.py[cod]

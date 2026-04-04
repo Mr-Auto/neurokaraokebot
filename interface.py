@@ -5,7 +5,6 @@ import math
 import asyncio
 import subprocess
 import time
-import random
 import numpy
 import sys
 from enum import Enum
@@ -47,10 +46,6 @@ def parse_cover_by(cover_str: str) -> CoverBy:
     else:
         log.error(f"Could not parse cover string {cover_str}")
         raise ValueError("Unknown cover string")
-
-
-def emote(_emote: EMOTES) -> str:
-    return random.choice(_emote.value)
 
 
 def is_number(s: str) -> bool:
@@ -117,11 +112,11 @@ class MusicCog(commands.Cog):
         if ctx.voice_client or mp:
             return
         if ctx.channel.type != discord.ChannelType.voice:
-            await ctx.reply(f"Can't play audio in '{ctx.channel.type}' channel! {emote(EMOTES.SAD)}")
+            await ctx.reply(f"Can't play audio in '{ctx.channel.type}' channel! {EMOTES.SAD}")
             return
         channel = ctx.channel
         await channel.connect(reconnect=False)
-        await ctx.reply(f"Starting Neuro Karaoke Playback in '{channel}' {emote(EMOTES.HAPPY)}")
+        await ctx.reply(f"Starting Neuro Karaoke Playback in '{channel}' {EMOTES.HAPPY}")
         await self.start(ctx)
 
     @commands.command(priority=2)
@@ -131,7 +126,7 @@ class MusicCog(commands.Cog):
         self.get_music_player(ctx).pause()
         if vc.is_playing():
             vc.pause()
-            await ctx.reply(f"Paused ⏸️ {emote(EMOTES.PAUSE)}")
+            await ctx.reply(f"Paused ⏸️ {EMOTES.PAUSE}")
 
     @commands.command(priority=2)
     @cmd_verify()
@@ -140,7 +135,7 @@ class MusicCog(commands.Cog):
         self.get_music_player(ctx).resume()
         if vc.is_paused():
             vc.resume()
-            await ctx.reply(f"Resumed ▶️ {emote(EMOTES.JAM)}")
+            await ctx.reply(f"Resumed ▶️ {EMOTES.JAM}")
 
     @commands.command()
     @cmd_verify()
@@ -152,7 +147,7 @@ class MusicCog(commands.Cog):
             mp.pause()
         vc = ctx.voice_client
         channel = vc.channel
-        await ctx.reply(f"Rebooting voice connection... {emote(EMOTES.LOADING)}")
+        await ctx.reply(f"Rebooting voice connection... {EMOTES.LOADING}")
         await vc.disconnect()
         await asyncio.sleep(2)
         await channel.connect(reconnect=False)
@@ -185,14 +180,14 @@ class MusicCog(commands.Cog):
                     board.remove(p)
                     break
             mp.fix_limiter()
-            await ctx.reply(f"Bass reset {emote(EMOTES.NWELIV)}")
+            await ctx.reply(f"Bass reset {EMOTES.NWELIV}")
             return
         elif value.lower() == "boost":
             gain_db = 4.0
         elif is_number(value):
             gain_db = float(value)
         else:
-            await ctx.reply(f"Wrong parameter. Use [reset, boost or number] {emote(EMOTES.STARE)}")
+            await ctx.reply(f"Wrong parameter. Use [reset, boost or number] {EMOTES.STARE}")
             return
 
         gain_db = numpy.clip(gain_db, -100.0, 20.0)
@@ -210,7 +205,7 @@ class MusicCog(commands.Cog):
             mp.fix_limiter()
 
         # TODO use based emote only if the bass is positive value
-        await ctx.reply(f"Bass adjusted by {gain_db}db {emote(EMOTES.BASED)}")
+        await ctx.reply(f"Bass adjusted by {gain_db}db {EMOTES.BASED}")
 
     @commands.command(priority=8)
     @cmd_verify()
@@ -250,16 +245,16 @@ class MusicCog(commands.Cog):
         embed = self.get_song_embed(mp.current_song.song_info, note, footer)
         cover_str = " & ".join(mp.current_song.song_info["coverArtists"])
         cover_by = parse_cover_by(cover_str)
-        emote_str = emote(EMOTES.JAM)
+        emote_str = EMOTES.JAM
         match cover_by:
             case CoverBy.Vedal:
                 pass
             case CoverBy.Twins:
-                emote_str = emote(EMOTES.NEUROJAM) + emote(EMOTES.EVILJAM)
+                emote_str = EMOTES.NEUROJAM + EMOTES.EVILJAM
             case CoverBy.Neuro:
-                emote_str = emote(EMOTES.NEUROJAM)
+                emote_str = EMOTES.NEUROJAM
             case CoverBy.Evil:
-                emote_str = emote(EMOTES.EVILJAM)
+                emote_str = EMOTES.EVILJAM
         await ctx.reply(content=f"Playing right now {emote_str}", embed=embed)
 
     @commands.command(priority=6)
@@ -270,7 +265,7 @@ class MusicCog(commands.Cog):
         mp = self.get_music_player(ctx)
         next_song = mp.get_next_song()
         if not next_song:
-            await ctx.reply(f"No song's in the queue? {emote(EMOTES.SILLY)}")
+            await ctx.reply(f"No song's in the queue? {EMOTES.SILLY}")
             log.info(
                 f"nextsong: No songs in the queue WTF?! server: {ctx.guild.name}[{ctx.guild.id}]"
             )
@@ -289,16 +284,16 @@ class MusicCog(commands.Cog):
         embed = self.get_song_embed(next_song.song_info, note, footer)
         cover_str = " & ".join(next_song.song_info["coverArtists"])
         cover_by = parse_cover_by(cover_str)
-        emote_str = emote(EMOTES.JAM)
+        emote_str = EMOTES.JAM
         match cover_by:
             case CoverBy.Vedal:
                 pass
             case CoverBy.Twins:
-                emote_str = emote(EMOTES.NEUROJAM) + emote(EMOTES.EVILJAM)
+                emote_str = EMOTES.NEUROJAM + EMOTES.EVILJAM
             case CoverBy.Neuro:
-                emote_str = emote(EMOTES.NEUROJAM)
+                emote_str = EMOTES.NEUROJAM
             case CoverBy.Evil:
-                emote_str = emote(EMOTES.EVILJAM)
+                emote_str = EMOTES.EVILJAM
         await ctx.reply(content=f"Next song: {emote_str}", embed=embed)
 
     @commands.command(priority=5)
@@ -323,7 +318,7 @@ class MusicCog(commands.Cog):
             search=search_string, page=1, pageSize=1, sortBy="KaraokeDate", sortDesc=True
         )
         if not response or "items" not in response:
-            await ctx.reply(f"Got empty request back {emote(EMOTES.SAD)}")
+            await ctx.reply(f"Got empty request back {EMOTES.SAD}")
             return
 
         result_list = response["items"]
@@ -333,7 +328,7 @@ class MusicCog(commands.Cog):
                 truncated = search_string[:char_limit] + "..."
             else:
                 truncated = search_string
-            await ctx.reply(f"No results for `{truncated}` {emote(EMOTES.SIDE_EYE)}")
+            await ctx.reply(f"No results for `{truncated}` {EMOTES.SIDE_EYE}")
             return
 
         mp = self.get_music_player(ctx)
@@ -367,12 +362,12 @@ class MusicCog(commands.Cog):
         """Disable/enable bot updating VC status with song name"""
         if self.updatestatus != update:
             if update:
-                await ctx.reply(f"Status updates back ON {emote(EMOTES.OK)}")
+                await ctx.reply(f"Status updates back ON {EMOTES.OK}")
                 mp = self.get_music_player(ctx)
                 song_name = mp.current_song.song_name()
                 await ctx.channel.edit(status=song_name)
             else:
-                await ctx.reply(f"Status updates OFF {emote(EMOTES.NWELIV)}")
+                await ctx.reply(f"Status updates OFF {EMOTES.NWELIV}")
         self.updatestatus = update
 
     @commands.command(priority=3)
@@ -381,7 +376,7 @@ class MusicCog(commands.Cog):
         """Reset all song modifiers, like bass, volume etc."""
         mp = self.get_music_player(ctx)
         mp.clear_modifiers()
-        await ctx.reply(f"Modifiers reset, volume 100% {emote(EMOTES.OK)}")
+        await ctx.reply(f"Modifiers reset, volume 100% {EMOTES.OK}")
 
     @commands.command(name="commands", hidden=True)
     @cmd_verify(True)
@@ -399,7 +394,7 @@ class MusicCog(commands.Cog):
     @commands.command(hidden=True)
     @commands.is_owner()
     async def restart(self, ctx: commands.Context):
-        await ctx.send(f"Goodbye {emote(EMOTES.SAD)}")
+        await ctx.send(f"Goodbye {EMOTES.SAD}")
         creationflags = 0
         if sys.platform == "win32":
             creationflags = subprocess.CREATE_NEW_CONSOLE
@@ -410,7 +405,7 @@ class MusicCog(commands.Cog):
     @commands.command(hidden=True)
     @commands.is_owner()
     async def exit(self, ctx: commands.Context):
-        await ctx.send(f"Goodbye {emote(EMOTES.SAD)}")
+        await ctx.send(f"Goodbye {EMOTES.SAD}")
         self.music_players = {}
         await self.bot.close()
 
@@ -419,12 +414,13 @@ class MusicCog(commands.Cog):
     # @commands.is_owner()
     async def emotes(self, ctx: commands.Context, group_name: str):
         """Debug"""
-        group_name = group_name.upper()
-        if group_name not in EMOTES.__members__:
-            await ctx.reply(f"So such group name {emote(EMOTES.SAD)}")
+        all_groups = EMOTES.groups()
+        if group_name.upper() not in all_groups:
+            all_groups_str = ", ".join(all_groups)
+            await ctx.reply(f"No such group name {EMOTES.SAD}\nAvaible groups: [{all_groups_str}]")
         else:
             message = ""
-            for emote_str in EMOTES[group_name].value:
+            for emote_str in EMOTES.get_list(group_name):
                 message += emote_str
                 # just in case send message before we run out of characters
                 if len(message) > 2000 - 40:
@@ -443,7 +439,7 @@ class MusicCog(commands.Cog):
             search=search_string, page=1, pageSize=99, sortBy="KaraokeDate", sortDesc=True
         )
         if not response or "items" not in response:
-            await ctx.reply(f"Got empty request back {emote(EMOTES.SAD)}")
+            await ctx.reply(f"Got empty request back {EMOTES.SAD}")
             return
 
         result_list = response["items"]
@@ -453,7 +449,7 @@ class MusicCog(commands.Cog):
                 truncated = search_string[:char_limit] + "..."
             else:
                 truncated = search_string
-            await ctx.reply(f"No results for `{truncated}` {emote(EMOTES.SIDE_EYE)}")
+            await ctx.reply(f"No results for `{truncated}` {EMOTES.SIDE_EYE}")
             return
 
         request_allowed = ctx.voice_client and ctx.voice_client.channel.id == ctx.channel.id
@@ -482,7 +478,7 @@ class MusicCog(commands.Cog):
         remaining = max(0, 3 - (time.perf_counter() - start_wait))
         await asyncio.sleep(remaining)
         await self.play_current(vc)
-        await ctx.send(f"Now playing `{song_name}` {emote(EMOTES.JAM)}")
+        await ctx.send(f"Now playing `{song_name}` {EMOTES.JAM}")
         log.info(
             f"Starting karaoke in: {ctx.channel.name}[{ctx.channel.id}] server: {ctx.guild.name}[{ctx.guild.id}]"
         )
@@ -491,7 +487,7 @@ class MusicCog(commands.Cog):
     async def play_current(self, vc: discord.VoiceClient):
         mp = self.get_music_player(vc)
         if not mp.current_song.has_playback():
-            await vc.channel.send(emote(EMOTES.LOADING))
+            await vc.channel.send(EMOTES.LOADING)
             log.warning(
                 f"play_current: no playback for current song. Requested ({mp.current_song.requested_by is not None}) Attempting to download again"
             )
@@ -617,9 +613,9 @@ class MusicCog(commands.Cog):
                     return
                 if after.mute:
                     mp.pause()
-                    await after.channel.send(f"🔇 {emote(EMOTES.SAD)}")
+                    await after.channel.send(f"🔇 {EMOTES.SAD}")
                 else:
-                    await after.channel.send(f"🔊 {emote(EMOTES.HAPPY)}")
+                    await after.channel.send(f"🔊 {EMOTES.HAPPY}")
                     mp.resume()
         else:
             if after.channel is not None:
@@ -645,7 +641,7 @@ class MusicCog(commands.Cog):
                 if mp.alone_counter > PAUSE_AFTER:
                     vc.pause()
                     mp.pause()
-                    await vc.channel.send(f"No one around {emote(EMOTES.SAD)}\nPaused ⏸️")
+                    await vc.channel.send(f"No one around {EMOTES.SAD}\nPaused ⏸️")
 
     @check_alone_status.before_loop
     async def before_loop(self):
