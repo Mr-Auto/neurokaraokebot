@@ -2,7 +2,8 @@ import logging
 import os
 from discord import Intents, Activity, ActivityType, StatusDisplayType
 from discord.ext import commands
-from interface import MusicCog, NotAllowedError
+from music_interface import MusicCog, NotAllowedError
+from utility_interface import UtilityCog
 from config import EMOTES
 from dotenv import load_dotenv
 from datetime import datetime
@@ -23,6 +24,7 @@ class MyBot(commands.Bot):
 
     async def setup_hook(self):
         await self.add_cog(MusicCog(self))
+        await self.add_cog(UtilityCog(self))
 
     async def on_ready(self):
         log.info(f"Logged in as {self.user} (ID: {self.user.id})")
