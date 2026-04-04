@@ -1,9 +1,12 @@
 import discord
 import subprocess
 import sys
+import logging
 from discord.ext import commands
 from music_interface import cmd_verify
 from config import EMOTES
+
+log = logging.getLogger("utility-interface")
 
 
 class UtilityCog(commands.Cog):
@@ -53,10 +56,9 @@ class UtilityCog(commands.Cog):
         else:
             message = ""
             for emote_str in EMOTES.get_list(group_name):
-                message += emote_str
-                # just in case send message before we run out of characters
-                if len(message) > 2000 - 40:
+                if len(message) + len(emote_str) > 2000:
                     await ctx.reply(message)
                     message = ""
+                message += emote_str
             if message:
                 await ctx.reply(message)

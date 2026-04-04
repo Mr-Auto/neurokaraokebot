@@ -22,7 +22,7 @@ from pedalboard import LowShelfFilter
 from song_lookup_view import SongLookupView
 
 
-log = logging.getLogger("interface")
+log = logging.getLogger("music-interface")
 
 
 class CoverBy(Enum):
@@ -85,11 +85,14 @@ def cmd_verify(allowed_channels=False):
 
 
 def song_search(**kwargs) -> list | None:
-    # sort by available:
-    # Title PlayCount KaraokeDate Duration
-    # all available keys:
-    # {"search":"text","page": 1,"pageSize": 10,"sortBy":"KaraokeDate","sortDesc": True,"sortDesc":false,"genreIds":null,"themeIds":null,"moodIds":null,"artistIds":null,
-    # "coverArtistIds":null,"languageIds":null,"energyLevel":null,"tempo":null,"key":null,"karaokeStart":null,"karaokeEnd":null}
+    """
+    sort by available:
+    Title PlayCount KaraokeDate Duration
+
+    all available keys and example data:
+    {"search":"text","page": 1,"pageSize": 10,"sortBy":"KaraokeDate","sortDesc": True,"sortDesc":false,"genreIds":null,"themeIds":null,"moodIds":null,"artistIds":null,
+    "coverArtistIds":null,"languageIds":null,"energyLevel":null,"tempo":null,"key":null,"karaokeStart":null,"karaokeEnd":null}
+    """
     return fetch_json_data(SEARCH_API, post=kwargs)
 
 
