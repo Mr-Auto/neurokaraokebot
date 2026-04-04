@@ -523,7 +523,8 @@ class MusicCog(commands.Cog):
     def playback_end(self, vc: discord.VoiceClient, error):
         if error:
             log.error(f"Error during playback: {error}", exc_info=error)
-        self.bot.loop.create_task(self.next_song(vc.guild.id))
+        fut = asyncio.run_coroutine_threadsafe(self.next_song(vc.guild.id), self.bot.loop)
+        fut.result()
 
     async def next_song(self, guild_id: int):
         log.info(f"next_song: attempt (GuildID: {guild_id})")
@@ -631,7 +632,6 @@ class MusicCog(commands.Cog):
 
     @tasks.loop(minutes=1.0)
     async def check_alone_status(self):
-        await self.bot.wait_until_ready()
         for guild in self.bot.guilds:
             mp = self.music_players.get(guild.id)
             if not mp:
@@ -646,3 +646,7 @@ class MusicCog(commands.Cog):
                     vc.pause()
                     mp.pause()
                     await vc.channel.send(f"No one around {emote(EMOTES.SAD)}\nPaused ⏸️")
+
+    @check_alone_status.before_loop
+    async def before_loop(self):
+        await self.bot.wait_until_ready()
