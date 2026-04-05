@@ -51,6 +51,10 @@ class MyBot(commands.Bot):
             await ctx.reply(f"Missing argument: {error.param.name} {EMOTES.SIDE_EYE}")
             return
 
+        if isinstance(error, commands.BadArgument):
+            await ctx.reply(f"{error} {EMOTES.SIDE_EYE}")
+            return
+
         if isinstance(error, NotAllowedError):
             await ctx.reply(f"❌ {error}", delete_after=5)
             return

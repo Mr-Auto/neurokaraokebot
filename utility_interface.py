@@ -2,6 +2,7 @@ import discord
 import subprocess
 import sys
 import logging
+import asyncio
 from discord.ext import commands
 from music_interface import cmd_verify
 from config import EMOTES
@@ -59,6 +60,7 @@ class UtilityCog(commands.Cog):
                 if len(message) + len(emote_str) > 2000:
                     await ctx.reply(message)
                     message = ""
+                    await asyncio.sleep(0.2)
                 message += emote_str
             if message:
                 await ctx.reply(message)
