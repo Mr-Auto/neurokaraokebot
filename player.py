@@ -215,9 +215,13 @@ class MusicPlayer:
         self.refill_task = loop.run_in_executor(None, self._refill_queue)
 
     def _refill_queue(self):
+        to_download = []
         for item in islice(chain(self.requests_cache, self.cache), MAX_CACHE):
             if item.has_playback():
                 continue
+            to_download.append(item)
+
+        for item in to_download:
             item.download()
 
         if len(self.cache) < MAX_CACHE + 1:
