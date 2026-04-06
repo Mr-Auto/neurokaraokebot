@@ -20,7 +20,12 @@ class MyBot(commands.Bot):
             state="Playing songs 🎵",
             status_display_type=StatusDisplayType.state,
         )
-        super().__init__(command_prefix="!", intents=intents, help_command=None, activity=activity)
+        super().__init__(
+            command_prefix=commands.when_mentioned_or("!"),
+            intents=intents,
+            help_command=None,
+            activity=activity,
+        )
 
     async def setup_hook(self):
         await self.add_cog(MusicCog(self))

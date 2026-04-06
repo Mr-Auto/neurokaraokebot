@@ -64,13 +64,15 @@ def cmd_verify(allowed_channels=False):
     async def predicate(ctx: commands.Context):
         extra = ""
         if allowed_channels:
-            extra = " or in allowed channels"
+            extra = " or allowed channels"
             if ctx.channel.id in ALLOWED_CHANNELS:
                 return True
         vc = ctx.voice_client
-        mp = ctx.cog.get_music_player(ctx)
-        if not allowed_channels and (not vc or not mp):
-            raise NotAllowedError(f"Bot not running, use !karaokehere to invite it to VC")
+        mp = ctx.bot.get_cog("MusicCog").get_music_player(ctx)
+        if not vc or not mp:
+            raise NotAllowedError(
+                f"Bot not running, use !karaokehere to invite it to VC. Command allowed only in VC{extra}"
+            )
 
         if (
             ctx.channel.id != vc.channel.id
@@ -210,7 +212,7 @@ class MusicCog(commands.Cog):
 
     @commands.command(priority=8)
     @cmd_verify()
-    @commands.cooldown(1, 5)
+    @commands.cooldown(1, 5, commands.BucketType.guild)
     async def skip(self, ctx: commands.Context):
         """Skip current song"""
         next_song = self.get_music_player(ctx).get_next_song()
@@ -451,10 +453,15 @@ class MusicCog(commands.Cog):
 
         mp.apply_effects_board()
         try:
-            vc.play(mp.current_song.playback, after=lambda e: self.playback_end(vc, e))
+            vc.play(
+                mp.current_song.playback,
+                bitrate=192,
+                signal_type="music",
+                after=lambda e: self.playback_end(vc, e),
+            )
         except Exception as e:
             playback_size = (
-                len(mp.current_song.playback.buffer) if mp.current_song.has_playback() else None
+                mp.current_song.playback.size() if mp.current_song.has_playback() else None
             )
             log.error(
                 f"play_current: could not start the playback error: ({e}) Playback size: {playback_size} Song data:"

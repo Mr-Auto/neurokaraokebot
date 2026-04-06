@@ -52,7 +52,7 @@ def fetch_json_data(url: str, get=None, post=None, retries=3):
             if i < retries - 1:
                 time.sleep(2)
             else:
-                log.info("All retry attempts failed.")
+                log.warning("All retry attempts failed.")
 
 
 class PCMSource(discord.AudioSource):
@@ -120,6 +120,9 @@ class PCMSource(discord.AudioSource):
     def duration(self) -> int:
         nbytes = self.buffer.getbuffer().nbytes
         return nbytes // self.BYTES_PER_SECOND
+    
+    def size(self) -> int:
+        return self.buffer.getbuffer().nbytes
 
     def remaining(self) -> int:
         total_size = self.buffer.getbuffer().nbytes
@@ -215,6 +218,7 @@ class MusicPlayer:
         self.refill_task = loop.run_in_executor(None, self._refill_queue)
 
     def _refill_queue(self):
+        log.info("reffil process starting...")
         to_download = []
         for item in islice(chain(self.requests_cache, self.cache), MAX_CACHE):
             if item.has_playback():
@@ -232,6 +236,7 @@ class MusicPlayer:
 
             for item in data:
                 self.cache.append(Song(item))
+        log.info("reffil done")
 
     def pause(self):
         if self.current_song.has_playback():
