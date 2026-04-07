@@ -5,7 +5,7 @@ from discord import ui
 from datetime import datetime
 from player import Song
 
-log = logging.getLogger("song_lookup_view")
+log = logging.getLogger()
 
 
 class RequestButton(ui.Button):

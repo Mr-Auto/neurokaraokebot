@@ -23,7 +23,7 @@ from pedalboard import LowShelfFilter
 from song_lookup_view import SongLookupView
 
 
-log = logging.getLogger("music-interface")
+log = logging.getLogger()
 
 
 class CoverBy(Enum):
@@ -43,8 +43,9 @@ def parse_cover_by(cover_str: str) -> CoverBy:
     elif "Evil" in cover_str:
         return CoverBy.Evil
     else:
-        log.error(f"Could not parse cover string {cover_str}")
-        raise ValueError("Unknown cover string")
+        log.error(f"parse_cover_by: error during parsing string - '{cover_str}'")
+        # default to some color
+        return CoverBy.Twins
 
 
 def is_number(s: str) -> bool:
@@ -121,7 +122,11 @@ class MusicCog(commands.Cog):
         channel = ctx.channel
         await channel.connect(reconnect=False)
         await ctx.reply(f"Starting Neuro Karaoke Playback in '{channel}' {EMOTES.HAPPY}")
-        await self.start(ctx)
+        try:
+            await self.start(ctx)
+        except:
+            await ctx.reply(f"Something went wrong {EMOTES.SILLY}")
+            raise
 
     @commands.command(priority=2)
     @cmd_verify()
@@ -160,7 +165,7 @@ class MusicCog(commands.Cog):
     @commands.command(priority=4)
     @cmd_verify()
     async def volume(self, ctx: commands.Context, vol: float):
-        """Change the volume"""
+        """Change the volume, values in %"""
         mp = self.get_music_player(ctx)
         vol = numpy.clip(vol, 0, 300.0)
         new_db = 0
@@ -173,8 +178,6 @@ class MusicCog(commands.Cog):
     @cmd_verify()
     async def bass(self, ctx: commands.Context, value: str):
         """Change bass [boost, reset, number in db]"""
-        if not value:
-            return
         mp = self.get_music_player(ctx)
         gain_db = 0.0
         board = mp.effects_board
@@ -226,9 +229,9 @@ class MusicCog(commands.Cog):
         else:
             ctx.voice_client.stop()
         if next_song is not None:
-            await ctx.reply(f"Skipping current song, next: `{next_song.song_name()}`")
+            await ctx.reply(f"Skipping current song, next: `{next_song.song_name()}` {EMOTES.JAM}")
         else:
-            await ctx.reply("Skipping current song, no more songs in queue")
+            await ctx.reply(f"Skipping current song, no more songs in queue {EMOTES.SILLY}")
             log.error(f"skip: no songs in the queue?")
 
     @commands.command(priority=6)
@@ -239,7 +242,8 @@ class MusicCog(commands.Cog):
         requested_by = mp.current_song.requested_by or self.bot.user.name
         song_remaining = mp.current_song.remaning()
         if song_remaining is None:
-            log.error("MusicPlayer: No playback for the current song")
+            await ctx.reply(f"Something went wrong {EMOTES.SILLY}")
+            log.error(f"No playback for the current song!")
             return
         song_end = int(time.time()) + song_remaining
         footer = f'Requested by "{requested_by}"'
@@ -259,7 +263,7 @@ class MusicCog(commands.Cog):
                 emote_str = EMOTES.NEUROJAM
             case CoverBy.Evil:
                 emote_str = EMOTES.EVILJAM
-        await ctx.reply(content=f"Playing right now {emote_str}", embed=embed)
+        await ctx.reply(f"Playing right now {emote_str}", embed=embed)
 
     @commands.command(priority=6)
     @cmd_verify()
@@ -270,14 +274,13 @@ class MusicCog(commands.Cog):
         next_song = mp.get_next_song()
         if not next_song:
             await ctx.reply(f"No song's in the queue? {EMOTES.SILLY}")
-            log.info(
-                f"nextsong: No songs in the queue WTF?! server: {ctx.guild.name}[{ctx.guild.id}]"
-            )
+            log.info(f"nextsong: No songs in the queue WTF?!")
             return
 
         requested_by = next_song.requested_by or self.bot.user.name
         song_remaining = mp.current_song.remaning()
         if song_remaining is None:
+            await ctx.reply(f"Something went wrong {EMOTES.SILLY}")
             log.error("MusicPlayer: No playback for the current song")
             return
         song_end = int(time.time()) + song_remaining + 2
@@ -298,14 +301,13 @@ class MusicCog(commands.Cog):
                 emote_str = EMOTES.NEUROJAM
             case CoverBy.Evil:
                 emote_str = EMOTES.EVILJAM
-        await ctx.reply(content=f"Next song: {emote_str}", embed=embed)
+        await ctx.reply(f"Next song: {emote_str}", embed=embed)
 
     @commands.command(priority=5)
     @cmd_verify()
     async def queue(self, ctx: commands.Context):
         """Current queue (next 10 songs)"""
         mp = self.get_music_player(ctx)
-
         description = ""
         # Show max 10 in a queue
         for song in islice(chain(mp.requests_cache, mp.cache), 10):
@@ -327,6 +329,7 @@ class MusicCog(commands.Cog):
             search=search_string, page=1, pageSize=1, sortBy="KaraokeDate", sortDesc=True
         )
         if not response or "items" not in response:
+            log.warning(f"term: '{search_string}' resulted in empty response")
             await ctx.reply(f"Got empty request back {EMOTES.SAD}")
             return
 
@@ -424,7 +427,7 @@ class MusicCog(commands.Cog):
 
         if self.music_players.get(ctx.guild.id):
             self.music_players[ctx.guild.id] = None
-            log.warning(f"Start: overwriting music player, server: {ctx.guild.name}[{ctx.guild.id}]")
+            log.warning(f"start: Overwriting music player, server: {ctx.guild.name}[{ctx.guild.id}]")
         vc.stop()
         start_wait = time.perf_counter()
 
@@ -437,9 +440,7 @@ class MusicCog(commands.Cog):
         await asyncio.sleep(remaining)
         await self.play_current(vc)
         await ctx.send(f"Now playing `{song_name}` {EMOTES.JAM}")
-        log.info(
-            f"Starting karaoke in: {ctx.channel.name}[{ctx.channel.id}] server: {ctx.guild.name}[{ctx.guild.id}]"
-        )
+        log.info(f"start: Starting karaoke in: ({ctx.guild.name} / {ctx.channel.name})")
         new_mp.refill()
 
     async def play_current(self, vc: discord.VoiceClient):
@@ -459,6 +460,7 @@ class MusicCog(commands.Cog):
 
         mp.apply_effects_board()
         try:
+            log.info(f"play_current: Starting playback '{mp.current_song.song_name()}'")
             vc.play(
                 mp.current_song.playback,
                 bitrate=192,
@@ -482,24 +484,29 @@ class MusicCog(commands.Cog):
     def playback_end(self, vc: discord.VoiceClient, error):
         if error:
             log.error(f"Error during playback: {error}", exc_info=error)
+
         fut = asyncio.run_coroutine_threadsafe(self.next_song(vc.guild.id), self.bot.loop)
         fut.result()
 
     async def next_song(self, guild_id: int):
-        log.info(f"next_song: attempt (GuildID: {guild_id})")
-        vc = self.bot.get_guild(guild_id).voice_client
+        guild = self.bot.get_guild(guild_id)
+        if not guild:
+            log.error(f"next_song: could not get guild (ID: {guild_id})")
+            return
+        log.info(f"next_song: attempt, server: {guild.name}[{guild_id}]")
+        vc = guild.voice_client
         mp = self.music_players.get(guild_id)
         # Do not try to load next song if not in vc or no player (probably restarting)
         if not vc or not mp:
             return
         # Force refill if no songs in cache (shouldn't really happen ever)
         if len(mp.requests_cache) == 0 and len(mp.cache) == 0:
-            log.warning(f"next_song: forcing refill (GuildID: {guild_id})")
+            log.warning(f"next_song: forcing refill, server: {guild.name}[{guild_id}]")
             mp.refill(True)
 
         mp.refill()
         await asyncio.sleep(2)
-        log.info(f"next_song: load and play next song (GuildID: {guild_id})")
+        log.info(f"next_song: load and play next song, server: {guild.name}[{guild_id}]")
         mp.load_next_song()
         await self.play_current(vc)
 

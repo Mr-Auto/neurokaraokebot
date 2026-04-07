@@ -7,7 +7,7 @@ from discord.ext import commands
 from music_interface import cmd_verify
 from config import EMOTES
 
-log = logging.getLogger("utility-interface")
+log = logging.getLogger()
 
 
 class UtilityCog(commands.Cog):
