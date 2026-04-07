@@ -1,6 +1,5 @@
 import discord
 import io
-import subprocess
 import numpy
 import logging
 import asyncio
@@ -18,6 +17,7 @@ from pedalboard import (
     LowShelfFilter,
     Bitcrush,
 )
+from pedalboard.io import AudioFile
 from collections import deque
 from itertools import chain, islice
 from config import MAX_CACHE, STORAGE_URL, RANDOM_API, SONG_URL
@@ -56,59 +56,68 @@ def fetch_json_data(url: str, get=None, post=None, retries=3):
 
 
 class PCMSource(discord.AudioSource):
+    SAMPLE_RATE = 48000
+    SAMPLES_PER_20MS = int(0.02 * SAMPLE_RATE)
+    BYTES_PER_SECOND = SAMPLE_RATE * 2 * (16 // 8)  # 48KHz, 2 channels, 16bit depth
+    BYTES_PER_20MS = int(0.02 * BYTES_PER_SECOND)
+
     def __init__(self, url: str):
-        command = [
-            "ffmpeg",
-            "-i",
-            url,
-            "-f",
-            "s16le",  # Output format: raw 16-bit PCM
-            "-acodec",
-            "pcm_s16le",  # Audio codec
-            "-ar",
-            "48000",  # Sample rate
-            "-ac",
-            "2",  # Channels
-            "-loglevel",
-            "quiet",  # Keep the console clean
-            "pipe:1",  # Output to stdout
-        ]
-        process = subprocess.Popen(command, stdout=subprocess.PIPE)
-        raw_pcm_data, _ = process.communicate()
-        self.buffer = io.BytesIO(raw_pcm_data)
         self.paused = False
-        self.effects_board: Pedalboard = None
-        self.BYTES_PER_SECOND = 48000 * 2 * (16 // 8)  # 48KHz, 2 channels, 16bit depth
-        self.bytes_per_20ms = 20 * int(self.BYTES_PER_SECOND / 1000)
+        self.effects_board = Pedalboard()
+        log.info(f"PCMSource: Fetching song data from '{url}'")
+        retries = 4
+        for i in range(retries):
+            try:
+                response = requests.get(url)
+                response.raise_for_status()
+                break
+            except (requests.exceptions.RequestException, ValueError) as e:
+                log.warning(f"Attempt {i + 1} failed: {e}")
+                if i < retries - 1:
+                    time.sleep(2)
+                else:
+                    log.warning("All retry attempts failed.")
+                    raise
+
+        self.buffer = AudioFile(io.BytesIO(response.content)).resampled_to(self.SAMPLE_RATE)
+        if self.buffer.num_channels != 2:
+            log.warning(f"File number of channels: {self.buffer.num_channels} != 2")
 
     def read(self):
         """Discord calls this every 20ms to get the next chunk of audio."""
         if self.paused:
-            return b"\x00" * self.bytes_per_20ms
-        # Read exactly 20ms of audio
-        chunk = self.buffer.read(self.bytes_per_20ms)
-        if not chunk:
+            return b"\x00" * self.BYTES_PER_20MS
+
+        chunk = self.buffer.read(self.SAMPLES_PER_20MS)
+        # check if we got empty result (end of file)
+        if chunk.shape[1] == 0:
             # ends playback
             return b""
 
-        if self.effects_board:
-            audio_data = numpy.frombuffer(chunk, dtype=numpy.int16).reshape(-1, 2).T
-            audio_float = audio_data.astype(numpy.float32) / 32768.0
-            processed_float = self.effects_board(audio_float, sample_rate=48000)
-            final_pcm = (processed_float * 32767.0).astype(numpy.int16)
-            chunk = final_pcm.T.tobytes()
+        # if mono double it for stereo
+        if chunk.shape[0] == 1:
+            chunk = numpy.repeat(chunk, 2, axis=0)
 
-        if len(chunk) < self.bytes_per_20ms:
-            padding = self.bytes_per_20ms - len(chunk)
-            chunk += b"\x00" * padding
-        return chunk
+        processed_audio = self.effects_board(chunk, self.SAMPLE_RATE)
+        pcm_16 = (processed_audio * 32767.0).astype(numpy.int16)
+        pcm_chunk = pcm_16.T.tobytes()
+        chunk_size = len(pcm_chunk)
+        if chunk_size < self.BYTES_PER_20MS:
+            padding = self.BYTES_PER_20MS - chunk_size
+            pcm_chunk += b"\x00" * padding
+        elif len(pcm_chunk) > self.BYTES_PER_20MS:
+            log.error(
+                f"PCMSource.read: Something went wrong, got more then 20ms of data.\nActual size: {chunk_size} expected: {self.BYTES_PER_20MS} index at {self.buffer.tell()}/{self.buffer.shape[1]}"
+            )
+        return pcm_chunk
 
     def is_opus(self):
         return False
 
     def seek(self, seconds: float):
         """Move the internal pointer to a specific second."""
-        self.buffer.seek(int(seconds * 192000))
+        target_frame = int(seconds * self.SAMPLE_RATE)
+        self.buffer.seek(target_frame)
 
     def set_pause(self, pause: bool):
         if pause and not self.paused:
@@ -118,17 +127,13 @@ class PCMSource(discord.AudioSource):
         self.paused = pause
 
     def duration(self) -> int:
-        nbytes = self.buffer.getbuffer().nbytes
-        return nbytes // self.BYTES_PER_SECOND
-    
+        return self.buffer.duration
+
     def size(self) -> int:
-        return self.buffer.getbuffer().nbytes
+        return len(self.buffer)
 
     def remaining(self) -> int:
-        total_size = self.buffer.getbuffer().nbytes
-        current_pos = self.buffer.tell()
-        remaining_bytes = total_size - current_pos
-        return remaining_bytes // self.BYTES_PER_SECOND
+        return (self.buffer.frames - self.buffer.tell()) // self.SAMPLE_RATE
 
 
 class Song:
@@ -159,6 +164,7 @@ class Song:
         self.playback = PCMSource(song_url)
         if not self.has_playback():
             log.error(f"Song.download: could not load song\n song data: {self.song_info}")
+            # should probably raise error
 
     def dump_json(self, indent=4) -> str:
         return json.dump(self.song_info, indent=indent)
@@ -168,7 +174,7 @@ class MusicPlayer:
     def __init__(self):
         self.cache = deque()
         self.requests_cache = deque()
-        self.effects_board = Pedalboard([])
+        self.effects_board = Pedalboard()
         self.alone_counter = 0
         self.update_status = True
         self.refill_task: asyncio.Future = None
@@ -250,7 +256,7 @@ class MusicPlayer:
         return self.current_song.has_playback() and self.current_song.playback.paused
 
     def clear_modifiers(self):
-        self.effects_board = Pedalboard([])
+        self.effects_board = Pedalboard()
 
     def set_volume(self, db_gain: float):
         if self.current_song.has_playback():
