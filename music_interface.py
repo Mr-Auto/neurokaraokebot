@@ -505,7 +505,7 @@ class MusicCog(commands.Cog):
             mp.refill(True)
 
         mp.refill()
-        await asyncio.sleep(2)
+        await asyncio.sleep(3)
         log.info(f"next_song: load and play next song, server: {guild.name}[{guild_id}]")
         mp.load_next_song()
         await self.play_current(vc)

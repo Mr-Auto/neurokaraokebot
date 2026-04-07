@@ -35,14 +35,14 @@ class UtilityCog(commands.Cog):
         if sys.platform == "win32":
             creationflags = subprocess.CREATE_NEW_CONSOLE
         subprocess.Popen([sys.executable] + sys.argv, creationflags=creationflags)
-        self.music_players = {}
+        ctx.bot.get_cog("MusicCog").music_players = {}
         await self.bot.close()
 
     @commands.command(hidden=True)
     @commands.is_owner()
     async def exit(self, ctx: commands.Context):
         await ctx.send(f"Goodbye {EMOTES.SAD}")
-        self.music_players = {}
+        ctx.bot.get_cog("MusicCog").music_players = {}
         await self.bot.close()
 
     @commands.command(hidden=True)
@@ -64,3 +64,18 @@ class UtilityCog(commands.Cog):
                 message += emote_str
             if message:
                 await ctx.reply(message)
+
+    @commands.command(hidden=True)
+    @commands.is_owner()
+    async def status(self, ctx: commands.Context):
+        """Check bot status"""
+        music_players = ctx.bot.get_cog("MusicCog").music_players
+        message = "Status:\n"
+        for guild in self.bot.guilds:
+            vc = guild.voice_client
+            mp = music_players.get(guild.id)
+            message += f"**{guild.name}** - MusicPlayer:`{mp is not None}` Connected to voice:`{vc is not None}`"
+            if mp:
+                message += f" Playback:`{not mp.is_paused()}`"
+            message += "\n"
+        await ctx.reply(message)
