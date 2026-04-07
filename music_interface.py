@@ -5,6 +5,7 @@ import math
 import asyncio
 import time
 import numpy
+import typing
 from enum import Enum
 from datetime import datetime
 from itertools import chain, islice
@@ -315,8 +316,13 @@ class MusicCog(commands.Cog):
 
     @commands.command(priority=8)
     @cmd_verify()
-    async def sr(self, ctx: commands.Context, *, search_string: str):
+    async def sr(
+        self, ctx: commands.Context, *, search_string: typing.Union[discord.PartialEmoji, str]
+    ):
         """Song request"""
+        if isinstance(search_string, discord.PartialEmoji):
+            search_string = search_string.name
+
         response = song_search(
             search=search_string, page=1, pageSize=1, sortBy="KaraokeDate", sortDesc=True
         )
