@@ -8,6 +8,8 @@ ALLOWED_CHANNELS = (
 MAX_CACHE = 3
 # Pause the playback after the bot is left alone in the VC for X minutes
 PAUSE_AFTER = 2
+# Length of pause between songs (in seconds)
+PAUSE_DURATION = 3
 
 # API stuff, no need to edit
 RANDOM_API = "https://api.neurokaraoke.com/api/songs/random"
@@ -35,7 +37,7 @@ class COLORS(IntEnum):
 
 
 @dataclass
-class EmoteCollection:
+class _EmoteCollection:
     SILLY_LIST: list[str] = field(default_factory=list)
     SAD_LIST: list[str] = field(default_factory=list)
     SIDE_EYE_LIST: list[str] = field(default_factory=list)
@@ -156,4 +158,4 @@ class EmoteCollection:
             json.dump({"EMOTES": clean_dict}, f, indent=4)
 
 
-EMOTES: EmoteCollection = EmoteCollection._load()
+EMOTES: _EmoteCollection = _EmoteCollection._load()

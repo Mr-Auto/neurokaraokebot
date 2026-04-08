@@ -20,12 +20,12 @@ from pedalboard import (
 )
 from collections import deque
 from itertools import chain, islice
-from config import MAX_CACHE, STORAGE_URL, RANDOM_API, SONG_URL
+from config import MAX_CACHE, STORAGE_URL, RANDOM_API, SONG_URL, PAUSE_DURATION
 
-# TODO fix deque mutated during iteration
+# TODO fix deque mutated during iteration // maybe fixed?
 # keep in mind the forced feill, probably need to lock it for that
 
-log = logging.getLogger("player")
+log = logging.getLogger()
 
 
 def format_song_name(json_data) -> str:
@@ -48,11 +48,11 @@ def fetch_json_data(url: str, get=None, post=None, retries=3):
             response.raise_for_status()
             return response.json()
         except (requests.exceptions.RequestException, ValueError) as e:
-            log.info(f"Attempt {i + 1} failed: {e}")
+            log.info(f"fetch_json_data: Attempt {i + 1} failed: {e}")
             if i < retries - 1:
                 time.sleep(2)
             else:
-                log.warning("All retry attempts failed.")
+                log.warning("fetch_json_data: All retry attempts failed.")
 
 
 class PCMSource(discord.AudioSource):
@@ -158,7 +158,8 @@ class Song:
         song_url = STORAGE_URL + self.song_info["absolutePath"]
         self.playback = PCMSource(song_url)
         if not self.has_playback():
-            log.error(f"Song.download: could not load song\n song data: {self.song_info}")
+            log.error(f"Song.download: could not load song\n song data: {self.dump_json()}")
+            # should probably raise error
 
     def dump_json(self, indent=4) -> str:
         return json.dump(self.song_info, indent=indent)
@@ -168,7 +169,7 @@ class MusicPlayer:
     def __init__(self):
         self.cache = deque()
         self.requests_cache = deque()
-        self.effects_board = Pedalboard([])
+        self.effects_board = Pedalboard()
         self.alone_counter = 0
         self.update_status = True
         self.refill_task: asyncio.Future = None
@@ -186,14 +187,14 @@ class MusicPlayer:
     def request_queue_duration(self) -> int:
         duration = 0
         for song in self.requests_cache:
-            duration += song.song_info["duration"] + 2
+            duration += song.song_info["duration"] + PAUSE_DURATION
         return duration
 
     def load_next_song(self):
         if len(self.requests_cache) > 0:
             self.current_song = self.requests_cache.popleft()
         else:
-            # unhandled exception, but we can't recover anyway
+            # unhandled exception if deque empty, but we can't recover anyway
             self.current_song = self.cache.popleft()
 
     def get_next_song(self) -> Song | None:
@@ -211,14 +212,14 @@ class MusicPlayer:
             return
 
         if self.refill_task and not self.refill_task.done():
-            log.info("refill_queue: refill already running, skipping")
+            log.info("refill: refill already running, skipping")
             return
 
         loop = asyncio.get_running_loop()
         self.refill_task = loop.run_in_executor(None, self._refill_queue)
 
     def _refill_queue(self):
-        log.info("reffil process starting...")
+        log.info("refill_queue: process starting...")
         to_download = []
         for item in islice(chain(self.requests_cache, self.cache), MAX_CACHE):
             if item.has_playback():
@@ -236,7 +237,7 @@ class MusicPlayer:
 
             for item in data:
                 self.cache.append(Song(item))
-        log.info("reffil done")
+        log.info("refill_queue: done")
 
     def pause(self):
         if self.current_song.has_playback():
@@ -250,7 +251,7 @@ class MusicPlayer:
         return self.current_song.has_playback() and self.current_song.playback.paused
 
     def clear_modifiers(self):
-        self.effects_board = Pedalboard([])
+        self.effects_board = Pedalboard()
 
     def set_volume(self, db_gain: float):
         if self.current_song.has_playback():
