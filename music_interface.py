@@ -17,6 +17,7 @@ from config import (
     SEARCH_API,
     RANDOM_API,
     IMAGES_URL,
+    PAUSE_DURATION,
 )
 from player import MusicPlayer, Song, fetch_json_data
 from pedalboard import LowShelfFilter
@@ -103,7 +104,7 @@ def song_search(**kwargs) -> list | None:
 class MusicCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.music_players = {}
+        self.music_players: dict[int, MusicPlayer] = {}
         self.check_alone_status.start()
 
     def cog_unload(self):
@@ -283,7 +284,7 @@ class MusicCog(commands.Cog):
             await ctx.reply(f"Something went wrong {EMOTES.SILLY}")
             log.error("MusicPlayer: No playback for the current song")
             return
-        song_end = int(time.time()) + song_remaining + 2
+        song_end = int(time.time()) + song_remaining + PAUSE_DURATION
         footer = f'Requested by "{requested_by}"'
         note = f"Playing <t:{song_end}:R>"
         if mp.is_paused():
@@ -345,7 +346,7 @@ class MusicCog(commands.Cog):
 
         mp = self.get_music_player(ctx)
         song_remaining = mp.current_song.remaning() or 0
-        playing_in = int(time.time()) + mp.request_queue_duration() + song_remaining + 2
+        playing_in = int(time.time()) + mp.request_queue_duration() + song_remaining + PAUSE_DURATION
         playing_in_str = f"<t:{playing_in}:R>"
         if mp.is_paused():
             playing_in_str = "`PAUSED`"
@@ -498,6 +499,9 @@ class MusicCog(commands.Cog):
         mp = self.music_players.get(guild_id)
         # Do not try to load next song if not in vc or no player (probably restarting)
         if not vc or not mp:
+            log.warning(
+                f"next_song: STOP Voice:{vc is not None}, MusicPlayer:{mp is not None}, server: {guild.name}[{guild_id}]"
+            )
             return
         # Force refill if no songs in cache (shouldn't really happen ever)
         if len(mp.requests_cache) == 0 and len(mp.cache) == 0:
@@ -505,7 +509,7 @@ class MusicCog(commands.Cog):
             mp.refill(True)
 
         mp.refill()
-        await asyncio.sleep(3)
+        await asyncio.sleep(PAUSE_DURATION)
         log.info(f"next_song: load and play next song, server: {guild.name}[{guild_id}]")
         mp.load_next_song()
         await self.play_current(vc)

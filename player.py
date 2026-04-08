@@ -20,7 +20,7 @@ from pedalboard import (
 from pedalboard.io import AudioFile
 from collections import deque
 from itertools import chain, islice
-from config import MAX_CACHE, STORAGE_URL, RANDOM_API, SONG_URL
+from config import MAX_CACHE, STORAGE_URL, RANDOM_API, SONG_URL, PAUSE_DURATION
 
 # TODO fix deque mutated during iteration // maybe fixed?
 # keep in mind the forced feill, probably need to lock it for that
@@ -192,7 +192,7 @@ class MusicPlayer:
     def request_queue_duration(self) -> int:
         duration = 0
         for song in self.requests_cache:
-            duration += song.song_info["duration"] + 2
+            duration += song.song_info["duration"] + PAUSE_DURATION
         return duration
 
     def load_next_song(self):
