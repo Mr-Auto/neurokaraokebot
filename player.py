@@ -56,6 +56,9 @@ def fetch_json_data(url: str, get=None, post=None, retries=3):
 
 
 class PCMSource(discord.AudioSource):
+    BYTES_PER_SECOND = 48000 * 2 * (16 // 8)  # 48KHz, 2 channels, 16bit depth
+    BYTES_PER_20MS = 20 * int(BYTES_PER_SECOND / 1000)
+
     def __init__(self, url: str):
         command = [
             "ffmpeg",
@@ -78,15 +81,13 @@ class PCMSource(discord.AudioSource):
         self.buffer = io.BytesIO(raw_pcm_data)
         self.paused = False
         self.effects_board: Pedalboard = None
-        self.BYTES_PER_SECOND = 48000 * 2 * (16 // 8)  # 48KHz, 2 channels, 16bit depth
-        self.bytes_per_20ms = 20 * int(self.BYTES_PER_SECOND / 1000)
 
     def read(self):
         """Discord calls this every 20ms to get the next chunk of audio."""
         if self.paused:
-            return b"\x00" * self.bytes_per_20ms
+            return b"\x00" * self.BYTES_PER_20MS
         # Read exactly 20ms of audio
-        chunk = self.buffer.read(self.bytes_per_20ms)
+        chunk = self.buffer.read(self.BYTES_PER_20MS)
         if not chunk:
             # ends playback
             return b""
@@ -98,9 +99,14 @@ class PCMSource(discord.AudioSource):
             final_pcm = (processed_float * 32767.0).astype(numpy.int16)
             chunk = final_pcm.T.tobytes()
 
-        if len(chunk) < self.bytes_per_20ms:
-            padding = self.bytes_per_20ms - len(chunk)
+        chunk_size = len(chunk)
+        if chunk_size < self.BYTES_PER_20MS:
+            padding = self.BYTES_PER_20MS - chunk_size
             chunk += b"\x00" * padding
+        elif chunk_size > self.BYTES_PER_20MS:
+            log.error(
+                f"PCMSource.read: Something went wrong, got more then 20ms of data.\nActual size: {chunk_size} expected: {self.BYTES_PER_20MS} index at {self.buffer.tell()}/{self.buffer.getbuffer().nbytes}"
+            )
         return chunk
 
     def is_opus(self):
@@ -120,7 +126,7 @@ class PCMSource(discord.AudioSource):
     def duration(self) -> int:
         nbytes = self.buffer.getbuffer().nbytes
         return nbytes // self.BYTES_PER_SECOND
-    
+
     def size(self) -> int:
         return self.buffer.getbuffer().nbytes
 
