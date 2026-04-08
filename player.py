@@ -1,5 +1,6 @@
 import discord
 import io
+import subprocess
 import numpy
 import logging
 import asyncio
@@ -26,6 +27,7 @@ from config import MAX_CACHE, STORAGE_URL, RANDOM_API, SONG_URL, PAUSE_DURATION
 # keep in mind the forced feill, probably need to lock it for that
 
 log = logging.getLogger()
+MODE = 1
 
 
 def format_song_name(json_data) -> str:
@@ -61,10 +63,36 @@ class PCMSource(discord.AudioSource):
     BYTES_PER_SECOND = SAMPLE_RATE * 2 * (16 // 8)  # 48KHz, 2 channels, 16bit depth
     BYTES_PER_20MS = int(0.02 * BYTES_PER_SECOND)
 
-    def __init__(self, url: str):
+    def __init__(self):
         self.paused = False
         self.effects_board = Pedalboard()
-        log.info(f"PCMSource: Fetching song data from '{url}'")
+
+    def is_opus(self):
+        return False
+
+    def set_pause(self, pause: bool):
+        if pause and not self.paused:
+            log.info("PCMSource: Playback Paused")
+        elif not pause and self.paused:
+            log.info("PCMSource: Playback Resumed")
+        self.paused = pause
+
+    def duration(self) -> int:
+        raise NotImplementedError
+
+    def size(self) -> int:
+        raise NotImplementedError
+
+    def remaining(self) -> int:
+        raise NotImplementedError
+
+    def seek(self, seconds: float):
+        raise NotImplementedError
+
+
+class LazyPCMSource(PCMSource):
+    def __init__(self, url: str):
+        log.info(f"LazyPCMSource: Fetching song data from '{url}'")
         retries = 4
         for i in range(retries):
             try:
@@ -72,16 +100,17 @@ class PCMSource(discord.AudioSource):
                 response.raise_for_status()
                 break
             except (requests.exceptions.RequestException, ValueError) as e:
-                log.warning(f"PCMSource: Attempt {i + 1} failed: {e}")
+                log.warning(f"LazyPCMSource: Attempt {i + 1} failed: {e}")
                 if i < retries - 1:
                     time.sleep(2)
                 else:
-                    log.warning("PCMSource: All retry attempts failed.")
+                    log.warning("LazyPCMSource: All retry attempts failed.")
                     raise
 
         self.buffer = AudioFile(io.BytesIO(response.content)).resampled_to(self.SAMPLE_RATE)
         if self.buffer.num_channels != 2:
-            log.warning(f"PCMSource: File number of channels: {self.buffer.num_channels} != 2")
+            log.warning(f"LazyPCMSource: File number of channels: {self.buffer.num_channels} != 2")
+        super().__init__()
 
     def read(self):
         """Discord calls this every 20ms to get the next chunk of audio."""
@@ -107,24 +136,14 @@ class PCMSource(discord.AudioSource):
             pcm_chunk += b"\x00" * padding
         elif len(pcm_chunk) > self.BYTES_PER_20MS:
             log.error(
-                f"PCMSource.read: Something went wrong, got more then 20ms of data.\nActual size: {chunk_size} expected: {self.BYTES_PER_20MS} index at {self.buffer.tell()}/{self.buffer.shape[1]}"
+                f"LazyPCMSource.read: Something went wrong, got more then 20ms of data.\nActual size: {chunk_size} expected: {self.BYTES_PER_20MS} index at {self.buffer.tell()}/{self.buffer.shape[1]}"
             )
         return pcm_chunk
-
-    def is_opus(self):
-        return False
 
     def seek(self, seconds: float):
         """Move the internal pointer to a specific second."""
         target_frame = int(seconds * self.SAMPLE_RATE)
         self.buffer.seek(target_frame)
-
-    def set_pause(self, pause: bool):
-        if pause and not self.paused:
-            log.info("PCMSource: Playback Paused")
-        elif not pause and self.paused:
-            log.info("PCMSource: Playback Resumed")
-        self.paused = pause
 
     def duration(self) -> int:
         return self.buffer.duration
@@ -134,6 +153,74 @@ class PCMSource(discord.AudioSource):
 
     def remaining(self) -> int:
         return (self.buffer.frames - self.buffer.tell()) // self.SAMPLE_RATE
+
+
+class EagerPCMSource(PCMSource):
+    def __init__(self, url: str):
+        command = [
+            "ffmpeg",
+            "-i",
+            url,
+            "-f",
+            "s16le",  # Output format: raw 16-bit PCM
+            "-acodec",
+            "pcm_s16le",  # Audio codec
+            "-ar",
+            "48000",  # Sample rate
+            "-ac",
+            "2",  # Channels
+            "-loglevel",
+            "quiet",  # Keep the console clean
+            "pipe:1",  # Output to stdout
+        ]
+        process = subprocess.Popen(command, stdout=subprocess.PIPE)
+        raw_pcm_data, _ = process.communicate()
+        self.buffer = io.BytesIO(raw_pcm_data)
+        super().__init__()
+
+    def read(self):
+        """Discord calls this every 20ms to get the next chunk of audio."""
+        if self.paused:
+            return b"\x00" * self.BYTES_PER_20MS
+        # Read exactly 20ms of audio
+        chunk = self.buffer.read(self.BYTES_PER_20MS)
+        if not chunk:
+            # ends playback
+            return b""
+
+        if self.effects_board:
+            audio_data = numpy.frombuffer(chunk, dtype=numpy.int16).reshape(-1, 2).T
+            audio_float = audio_data.astype(numpy.float32) / 32768.0
+            processed_float = self.effects_board(audio_float, sample_rate=48000)
+            final_pcm = (processed_float * 32767.0).astype(numpy.int16)
+            chunk = final_pcm.T.tobytes()
+
+        chunk_size = len(chunk)
+        if chunk_size < self.BYTES_PER_20MS:
+            padding = self.BYTES_PER_20MS - chunk_size
+            chunk += b"\x00" * padding
+        elif chunk_size > self.BYTES_PER_20MS:
+            log.error(
+                f"EagerPCMSource.read: Something went wrong, got more then 20ms of data.\nActual size: {chunk_size} expected: {self.BYTES_PER_20MS} index at {self.buffer.tell()}/{self.buffer.shape[1]}"
+            )
+        return chunk
+
+    def seek(self, seconds: float):
+        """Move the internal pointer to a specific second."""
+        self.buffer.seek(int(seconds * 192000))
+
+    def duration(self) -> int:
+        nbytes = self.buffer.getbuffer().nbytes
+        return nbytes // self.BYTES_PER_SECOND
+
+    def size(self) -> int:
+        return self.buffer.getbuffer().nbytes
+
+    def remaining(self) -> int:
+        total_size = self.buffer.getbuffer().nbytes
+        current_pos = self.buffer.tell()
+        remaining_bytes = total_size - current_pos
+        return remaining_bytes // self.BYTES_PER_SECOND
 
 
 class Song:
@@ -161,7 +248,10 @@ class Song:
 
     def download(self):
         song_url = STORAGE_URL + self.song_info["absolutePath"]
-        self.playback = PCMSource(song_url)
+        if MODE == 1:
+            self.playback = LazyPCMSource(song_url)
+        else:
+            self.playback = EagerPCMSource(song_url)
         if not self.has_playback():
             log.error(f"Song.download: could not load song\n song data: {self.dump_json()}")
             # should probably raise error

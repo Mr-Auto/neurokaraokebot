@@ -20,6 +20,7 @@ from config import (
     PAUSE_DURATION,
 )
 from player import MusicPlayer, Song, fetch_json_data
+import player
 from pedalboard import LowShelfFilter
 from song_lookup_view import SongLookupView
 
@@ -417,6 +418,23 @@ class MusicCog(commands.Cog):
         request_allowed = ctx.voice_client and ctx.voice_client.channel.id == ctx.channel.id
         view = SongLookupView(result_list, request_allowed, ctx.author.id)
         view.message = await ctx.reply(view=view, content=None, embed=None, file=None)
+
+    @commands.command()
+    @commands.is_owner()
+    async def mode(self, ctx: commands.Context, mode: str = None):
+        if mode:
+            if mode.lower() == "lazy":
+                player.MODE = 1
+            elif mode.lower() == "eager":
+                player.MODE = 2
+            else:
+                await ctx.reply(f"Wrong option [lazy or eager] {EMOTES.SILLY}")
+                return
+
+        if player.MODE == 1:
+            await ctx.reply(f"Current mode: `LazyPCMSource(pedalboard)` {EMOTES.LOADING}")
+        else:
+            await ctx.reply(f"Current mode: `EagerPCMSource(ffmpeg)` {EMOTES.PAUSE}")
 
     def get_music_player(self, ctx: commands.Context) -> MusicPlayer:
         return self.music_players.get(ctx.guild.id)

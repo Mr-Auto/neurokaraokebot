@@ -3,3 +3,4 @@ requests
 numpy
 pedalboard
 python-dotenv
+ffmpeg
