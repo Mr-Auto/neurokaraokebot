@@ -536,8 +536,10 @@ class MusicCog(commands.Cog):
         _, song_info: dict, last_section: str | None = None, footer: str | None = None
     ):
         original_by = " & ".join(song_info["originalArtists"])
-        date = datetime.fromisoformat(song_info["streamDate"]).strftime("%B %d, %Y")
-        minutes, seconds = divmod(song_info["duration"], 60)
+        date = song_info.get("streamDate")
+        if date:
+            date = datetime.fromisoformat(date).strftime("%B %d, %Y")
+        minutes, seconds = divmod(song_info["duration"] or 0, 60)
         song = Song(song_info)
         song_url = song.get_url()
         cover_str = " & ".join(song_info["coverArtists"])

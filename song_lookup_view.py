@@ -4,6 +4,7 @@ import time
 from discord import ui
 from datetime import datetime
 from player import Song
+from config import PAUSE_DURATION, EMOTES
 
 log = logging.getLogger()
 
@@ -34,8 +35,12 @@ class RequestButton(ui.Button):
         song_remaining = mp.current_song.remaning() or 0
         playing_in_str = "`PAUSED`"
         if not mp.is_paused():
-            playing_in = int(time.time()) + mp.request_queue_duration() + song_remaining + 2
-            playing_in_str = f"<t:{playing_in}:R>"
+            queue_duration = mp.request_queue_duration()
+            if queue_duration is not None:
+                playing_in = int(time.time()) + queue_duration + song_remaining + PAUSE_DURATION
+                playing_in_str = f"<t:{playing_in}:R>"
+            else:
+                playing_in_str = f"`in Unknown` {EMOTES.SILLY}"
         requested_song = Song(self.song_data, interaction.user.name)
         mp.requests_cache.append(requested_song)
         await interaction.channel.send(
@@ -69,9 +74,12 @@ class SongLookupView(ui.LayoutView):
         container = ui.Container(accent_color=discord.Color.blue())
         for idx in range(start, end):
             song = Song(self.data[idx])
-            song_url = song.get_url()
-            date = datetime.fromisoformat(self.data[idx]["streamDate"]).strftime("%B %d, %Y")
-            text = ui.TextDisplay(f"{idx +1}. [{song.song_name()}]({song_url})\n-# {date}\n")
+            text_raw = f"{idx +1}. [{song.song_name()}]({song.get_url()})"
+            date = self.data[idx].get("streamDate")
+            if date:
+                date = datetime.fromisoformat(date).strftime("%B %d, %Y")
+                text_raw += f"\n-# {date}\n"
+            text = ui.TextDisplay(text_raw)
             was_requested = self.data[idx].get("_requested") or False
             if self.request_allowed and not no_buttons:
                 section = ui.Section(text, accessory=RequestButton(self.data[idx], was_requested))

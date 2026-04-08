@@ -257,7 +257,7 @@ class Song:
             # should probably raise error
 
     def dump_json(self, indent=4) -> str:
-        return json.dump(self.song_info, indent=indent)
+        return json.dumps(self.song_info, indent=indent)
 
 
 class MusicPlayer:
@@ -279,10 +279,13 @@ class MusicPlayer:
         self.current_song = Song(current_song_data)
         self.current_song.download()
 
-    def request_queue_duration(self) -> int:
+    def request_queue_duration(self) -> int | None:
         duration = 0
         for song in self.requests_cache:
-            duration += song.song_info["duration"] + PAUSE_DURATION
+            song_duration = song.song_info.get("duration")
+            if song_duration is None:
+                return None
+            duration += song_duration + PAUSE_DURATION
         return duration
 
     def load_next_song(self):
