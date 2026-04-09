@@ -1,8 +1,10 @@
+import json
 import discord
 from discord.ext import commands, tasks
 import logging
 import math
 import asyncio
+import requests
 import time
 import numpy
 import typing
@@ -18,6 +20,7 @@ from config import (
     RANDOM_API,
     IMAGES_URL,
     PAUSE_DURATION,
+    PLAYLIST_API,
 )
 from player import MusicPlayer, Song, fetch_json_data
 import player
@@ -251,7 +254,7 @@ class MusicCog(commands.Cog):
         footer = f'Requested by "{requested_by}"'
         note = f"Ends <t:{song_end}:R>"
         if mp.is_paused():
-            note = "Ends `PAUSED`"
+            note = f"Ends `PAUSED` {EMOTES.PAUSE}"
         embed = self.get_song_embed(mp.current_song.song_info, note, footer)
         cover_str = " & ".join(mp.current_song.song_info["coverArtists"])
         cover_by = parse_cover_by(cover_str)
@@ -289,7 +292,7 @@ class MusicCog(commands.Cog):
         footer = f'Requested by "{requested_by}"'
         note = f"Playing <t:{song_end}:R>"
         if mp.is_paused():
-            note = "Playing `PAUSED`"
+            note = f"Playing `PAUSED` {EMOTES.PAUSE}"
         embed = self.get_song_embed(next_song.song_info, note, footer)
         cover_str = " & ".join(next_song.song_info["coverArtists"])
         cover_by = parse_cover_by(cover_str)
@@ -347,10 +350,15 @@ class MusicCog(commands.Cog):
 
         mp = self.get_music_player(ctx)
         song_remaining = mp.current_song.remaning() or 0
-        playing_in = int(time.time()) + mp.request_queue_duration() + song_remaining + PAUSE_DURATION
-        playing_in_str = f"<t:{playing_in}:R>"
-        if mp.is_paused():
-            playing_in_str = "`PAUSED`"
+        queue_duration = mp.request_queue_duration()
+        playing_in_str = f"`PAUSED` {EMOTES.PAUSE}"
+        if not mp.is_paused():
+            if queue_duration is not None:
+                playing_in = int(time.time()) + queue_duration + song_remaining + PAUSE_DURATION
+                playing_in_str = f"<t:{playing_in}:R>"
+            else:
+                playing_in_str = f"`Unknown` {EMOTES.SILLY}"
+
         requested_song = Song(result_list[0], ctx.author.name)
         mp.requests_cache.append(requested_song)
         song_name = requested_song.song_name()
@@ -417,7 +425,7 @@ class MusicCog(commands.Cog):
 
         request_allowed = ctx.voice_client and ctx.voice_client.channel.id == ctx.channel.id
         view = SongLookupView(result_list, request_allowed, ctx.author.id)
-        view.message = await ctx.reply(view=view, content=None, embed=None, file=None)
+        view.message = await ctx.reply(view=view)
 
     @commands.command()
     @commands.is_owner()
@@ -435,6 +443,30 @@ class MusicCog(commands.Cog):
             await ctx.reply(f"Current mode: `LazyPCMSource(pedalboard)` {EMOTES.LOADING}")
         else:
             await ctx.reply(f"Current mode: `EagerPCMSource(ffmpeg)` {EMOTES.PAUSE}")
+
+    @commands.command()
+    @cmd_verify()
+    async def playlist(self, ctx: commands.Context, url: str):
+        """Open playlist from neurokaraoke (full url or just id), allowing you to request songs from it"""
+        playlist_id = url.strip("/").rsplit("/", 1)[-1]
+        if len(playlist_id) != 36:
+            await ctx.reply(f"Invalid playlist link or id {EMOTES.SILLY}")
+            return
+
+        response = requests.get(PLAYLIST_API + playlist_id, headers={"x-guest-id": "67"})
+        if response.status_code != 200:
+            await ctx.reply(
+                f"Something went wrong, status code: `{response.status_code}` {EMOTES.SILLY}"
+            )
+            return
+
+        json_result = response.json()
+        if "songListDTOs" not in json_result or len(json_result["songListDTOs"]) == 0:
+            await ctx.reply(f"Didn't get playlist back {EMOTES.SILLY}")
+            return
+
+        view = SongLookupView(json_result["songListDTOs"], True, ctx.author.id)
+        view.message = await ctx.reply(view=view)
 
     def get_music_player(self, ctx: commands.Context) -> MusicPlayer:
         return self.music_players.get(ctx.guild.id)
@@ -562,7 +594,7 @@ class MusicCog(commands.Cog):
         if last_section:
             description += f"\n\n{last_section}"
         embed = discord.Embed(title=song_name, description=description, color=color, url=song_url)
-        if song_info["coverArt"] and "absolutePath" in song_info["coverArt"]:
+        if song_info.get("coverArt") and song_info["coverArt"].get("absolutePath"):
             image_url = IMAGES_URL
             image_url += song_info["coverArt"]["absolutePath"]
             image_url += "/width=900,height=900,quality=90,fit=crop,gravity=auto"

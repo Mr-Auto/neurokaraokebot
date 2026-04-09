@@ -33,7 +33,7 @@ class RequestButton(ui.Button):
         cog = interaction.client.get_cog("MusicCog")
         mp = cog.music_players.get(interaction.guild.id)
         song_remaining = mp.current_song.remaning() or 0
-        playing_in_str = "`PAUSED`"
+        playing_in_str = f"`PAUSED` {EMOTES.PAUSE}"
         if not mp.is_paused():
             queue_duration = mp.request_queue_duration()
             if queue_duration is not None:

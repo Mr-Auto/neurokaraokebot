@@ -33,7 +33,8 @@ MODE = 1
 def format_song_name(json_data) -> str:
     name = " & ".join(json_data["originalArtists"])
     name += " - " + json_data["title"]
-    name += " (" + " & ".join(json_data["coverArtists"]) + ")"
+    if len(json_data["coverArtists"]) != 0:
+        name += " (" + " & ".join(json_data["coverArtists"]) + ")"
     return name
 
 
@@ -247,7 +248,7 @@ class Song:
         return self.playback.remaining() if self.has_playback() else None
 
     def download(self):
-        song_url = STORAGE_URL + self.song_info["absolutePath"]
+        song_url = STORAGE_URL + self.song_info["absolutePath"].strip("/")
         if MODE == 1:
             self.playback = LazyPCMSource(song_url)
         else:
