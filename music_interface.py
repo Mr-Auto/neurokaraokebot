@@ -48,7 +48,7 @@ def parse_cover_by(cover_str: str) -> CoverBy:
     elif "Evil" in cover_str:
         return CoverBy.Evil
     else:
-        log.error(f"parse_cover_by: error during parsing string - '{cover_str}'")
+        log.warning(f"parse_cover_by: error during parsing string - '{cover_str}'")
         # default to some color
         return CoverBy.Twins
 
@@ -427,7 +427,7 @@ class MusicCog(commands.Cog):
         view = SongLookupView(result_list, request_allowed, ctx.author.id)
         view.message = await ctx.reply(view=view)
 
-    @commands.command()
+    @commands.command(hidden=True)
     @commands.is_owner()
     async def mode(self, ctx: commands.Context, mode: str = None):
         if mode:

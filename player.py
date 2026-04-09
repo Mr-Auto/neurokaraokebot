@@ -17,6 +17,7 @@ from pedalboard import (
     Limiter,
     LowShelfFilter,
     Bitcrush,
+    Resample,
 )
 from pedalboard.io import AudioFile
 from collections import deque
@@ -92,23 +93,51 @@ class PCMSource(discord.AudioSource):
 
 
 class LazyPCMSource(PCMSource):
-    def __init__(self, url: str):
-        log.info(f"LazyPCMSource: Fetching song data from '{url}'")
-        retries = 4
-        for i in range(retries):
-            try:
-                response = requests.get(url)
-                response.raise_for_status()
-                break
-            except (requests.exceptions.RequestException, ValueError) as e:
-                log.warning(f"LazyPCMSource: Attempt {i + 1} failed: {e}")
-                if i < retries - 1:
-                    time.sleep(2)
-                else:
-                    log.warning("LazyPCMSource: All retry attempts failed.")
-                    raise
+    def __init__(self, url: str, pre_process=False):
+        if pre_process:
+            log.info(f"LazyPCMSource: Fetching and converting (ffmpeg) song data from '{url}'")
+            # unsupported file format, we use ffmpeg to convert
+            command = [
+                "ffmpeg",
+                "-i",
+                url,
+                "-c:a",
+                "libvorbis",
+                "-q:a",
+                "8",
+                "-ac",
+                "2",  # Channels
+                "-ar",
+                str(self.SAMPLE_RATE),  # since we're converting anyway, might as well resample it
+                "-f",
+                "ogg",
+                "-loglevel",
+                "warning",
+                "pipe:1",  # Output to stdout
+            ]
+            process = subprocess.Popen(command, stdout=subprocess.PIPE)
+            file_data, ffmpeg_log = process.communicate()
+            if process.returncode != 0:
+                log.error(f"LazyPCMSource: ffmpeg returned: {ffmpeg_log}")
+        else:
+            log.info(f"LazyPCMSource: Fetching song data from '{url}'")
+            retries = 4
+            for i in range(retries):
+                try:
+                    response = requests.get(url)
+                    response.raise_for_status()
+                    break
+                except (requests.exceptions.RequestException, ValueError) as e:
+                    log.warning(f"LazyPCMSource: Attempt {i + 1} failed: {e}")
+                    if i < retries - 1:
+                        time.sleep(2)
+                    else:
+                        log.warning("LazyPCMSource: All retry attempts failed.")
+                        raise
+            file_data = response.content
 
-        self.buffer = AudioFile(io.BytesIO(response.content)).resampled_to(self.SAMPLE_RATE)
+        audio_file = AudioFile(io.BytesIO(file_data))
+        self.buffer = audio_file.resampled_to(self.SAMPLE_RATE, Resample.Quality.ZeroOrderHold)
         if self.buffer.num_channels != 2:
             log.warning(f"LazyPCMSource: File number of channels: {self.buffer.num_channels} != 2")
         super().__init__()
@@ -129,8 +158,8 @@ class LazyPCMSource(PCMSource):
             chunk = numpy.repeat(chunk, 2, axis=0)
 
         processed_audio = self.effects_board(chunk, self.SAMPLE_RATE)
-        pcm_16 = (processed_audio * 32767.0).astype(numpy.int16)
-        pcm_chunk = pcm_16.T.tobytes()
+        processed_audio *= 32767.0
+        pcm_chunk = processed_audio.astype(numpy.int16).T.tobytes()
         chunk_size = len(pcm_chunk)
         if chunk_size < self.BYTES_PER_20MS:
             padding = self.BYTES_PER_20MS - chunk_size
@@ -147,17 +176,21 @@ class LazyPCMSource(PCMSource):
         self.buffer.seek(target_frame)
 
     def duration(self) -> int:
+        """Duration of the song in seconds"""
         return self.buffer.duration
 
     def size(self) -> int:
-        return len(self.buffer)
+        """Numer of samples in the buffer"""
+        return self.buffer.shape[1]
 
     def remaining(self) -> int:
+        """Remaining time in seconds"""
         return (self.buffer.frames - self.buffer.tell()) // self.SAMPLE_RATE
 
 
 class EagerPCMSource(PCMSource):
     def __init__(self, url: str):
+        log.info(f"EagerPCMSource: Fetching and converting (ffmpeg) song data from '{url}'")
         command = [
             "ffmpeg",
             "-i",
@@ -167,15 +200,17 @@ class EagerPCMSource(PCMSource):
             "-acodec",
             "pcm_s16le",  # Audio codec
             "-ar",
-            "48000",  # Sample rate
+            str(self.SAMPLE_RATE),
             "-ac",
             "2",  # Channels
             "-loglevel",
-            "quiet",  # Keep the console clean
+            "warning",
             "pipe:1",  # Output to stdout
         ]
         process = subprocess.Popen(command, stdout=subprocess.PIPE)
-        raw_pcm_data, _ = process.communicate()
+        raw_pcm_data, ffmpeg_log = process.communicate()
+        if process.returncode != 0:
+            log.error(f"EagerPCMSource: ffmpeg returned: {ffmpeg_log}")
         self.buffer = io.BytesIO(raw_pcm_data)
         super().__init__()
 
@@ -192,9 +227,9 @@ class EagerPCMSource(PCMSource):
         if self.effects_board:
             audio_data = numpy.frombuffer(chunk, dtype=numpy.int16).reshape(-1, 2).T
             audio_float = audio_data.astype(numpy.float32) / 32768.0
-            processed_float = self.effects_board(audio_float, sample_rate=48000)
-            final_pcm = (processed_float * 32767.0).astype(numpy.int16)
-            chunk = final_pcm.T.tobytes()
+            processed_audio = self.effects_board(audio_float, self.SAMPLE_RATE)
+            processed_audio *= 32767.0
+            chunk = processed_audio.astype(numpy.int16).T.tobytes()
 
         chunk_size = len(chunk)
         if chunk_size < self.BYTES_PER_20MS:
@@ -249,8 +284,10 @@ class Song:
 
     def download(self):
         song_url = STORAGE_URL + self.song_info["absolutePath"].strip("/")
+        extension = song_url.rsplit(".", 1)[-1].lower()
         if MODE == 1:
-            self.playback = LazyPCMSource(song_url)
+            pre_process = extension not in ["mp3", "flac", "aiff", "ogg", "wav"]
+            self.playback = LazyPCMSource(song_url, pre_process)
         else:
             self.playback = EagerPCMSource(song_url)
         if not self.has_playback():

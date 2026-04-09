@@ -3,7 +3,7 @@ import logging
 import time
 from discord import ui
 from datetime import datetime
-from player import Song
+from player import MusicPlayer, Song
 from config import PAUSE_DURATION, EMOTES
 
 log = logging.getLogger()
@@ -31,7 +31,7 @@ class RequestButton(ui.Button):
         self.disabled = True
         await interaction.response.edit_message(view=self.view)
         cog = interaction.client.get_cog("MusicCog")
-        mp = cog.music_players.get(interaction.guild.id)
+        mp: MusicPlayer = cog.music_players.get(interaction.guild.id)
         song_remaining = mp.current_song.remaning() or 0
         playing_in_str = f"`PAUSED` {EMOTES.PAUSE}"
         if not mp.is_paused():
@@ -43,6 +43,7 @@ class RequestButton(ui.Button):
                 playing_in_str = f"`in Unknown` {EMOTES.SILLY}"
         requested_song = Song(self.song_data, interaction.user.name)
         mp.requests_cache.append(requested_song)
+        mp.refill()
         await interaction.channel.send(
             f"{interaction.user.mention} requested: `{requested_song.song_name()}`\nAdded to the queue at position {len(mp.requests_cache)}, playing {playing_in_str}"
         )
