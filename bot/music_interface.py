@@ -167,57 +167,17 @@ class MusicCog(commands.Cog):
         await channel.connect(reconnect=False)
         await self.start(ctx)
 
-    @commands.command(priority=4)
+    @commands.command(name="volume", priority=4)
     @cmd_verify()
-    async def volume(self, ctx: commands.Context, vol: float):
-        """Change the volume, values in %"""
-        mp = self.get_music_player(ctx)
-        vol = numpy.clip(vol, 0, 300.0)
-        new_db = 0
-        if vol != 100:
-            new_db = 20 * math.log10(vol / 100)
-        mp.set_volume(new_db)
-        await ctx.reply(f"Volume set to {vol}% 🔊")
+    async def volume_short(self, ctx: commands.Context, vol: float):
+        """Short for !modifiers volume"""
+        await ctx.invoke(self.volume, vol=vol)
 
-    @commands.command(priority=4)
+    @commands.command(name="bass", priority=4)
     @cmd_verify()
-    async def bass(self, ctx: commands.Context, value: str):
-        """Change bass [boost, reset, number in db]"""
-        mp = self.get_music_player(ctx)
-        gain_db = 0.0
-        board = mp.effects_board
-        if value.lower() == "reset" or value == "0":
-            for p in board:
-                if isinstance(p, LowShelfFilter):
-                    board.remove(p)
-                    break
-            mp.fix_limiter()
-            await ctx.reply(f"Bass reset {EMOTES.NWELIV}")
-            return
-        elif value.lower() == "boost":
-            gain_db = 4.0
-        elif is_number(value):
-            gain_db = float(value)
-        else:
-            await ctx.reply(f"Wrong parameter. Use [reset, boost or number] {EMOTES.STARE}")
-            return
-
-        gain_db = numpy.clip(gain_db, -100.0, 20.0)
-        low_shelf = None
-        for p in board:
-            if isinstance(p, LowShelfFilter):
-                low_shelf = p
-                break
-
-        if low_shelf:
-            low_shelf.gain_db = gain_db
-        else:
-            low_shelf = LowShelfFilter(cutoff_frequency_hz=200, gain_db=gain_db)
-            board.insert(0, low_shelf)
-            mp.fix_limiter()
-
-        # TODO use based emote only if the bass is positive value
-        await ctx.reply(f"Bass adjusted by {gain_db}db {EMOTES.BASED}")
+    async def bass_short(self, ctx: commands.Context, value: str):
+        """Short for !modifiers bass"""
+        await ctx.invoke(self.bass, value=value)
 
     @commands.command(priority=8)
     @cmd_verify()
@@ -392,13 +352,100 @@ class MusicCog(commands.Cog):
                 await ctx.reply(f"Status updates OFF {EMOTES.NWELIV}")
         self.updatestatus = update
 
-    @commands.command(priority=3)
+    @commands.group(priority=3, invoke_without_command=True)
     @cmd_verify()
-    async def resetmodifiers(self, ctx: commands.Context):
-        """Reset all song modifiers, like bass, volume etc."""
+    async def modifiers(self, ctx: commands.Context):
+        """Edit/Reset modifiers"""
+        command_names = ", ".join(c.name for c in self.modifiers.commands)
+        mp = self.get_music_player(ctx)
+        plugin_names = ", ".join(type(plugin).__name__ for plugin in mp.effects_board)
+        await ctx.reply(f"Available options: [{command_names}]\nActive plugins: [{plugin_names}]")
+
+    @modifiers.command()
+    async def help(self, ctx: commands.Context):
+        embed = discord.Embed(title="Modifiers help:", color=discord.Color.orange())
+        embed.description = "Placeholder text"
+        for command in self.modifiers.commands:
+            if command.name == "help":
+                continue
+            field_name = f"!{command.name}"
+            for alias in command.aliases:
+                field_name += f"  !{alias}"
+            embed.add_field(name=field_name, value=command.help or "", inline=False)
+        await ctx.reply(embed=embed)
+
+    @modifiers.command()
+    async def reset(self, ctx: commands.Context):
+        """Reset all modifiers, like bass, volume etc."""
         mp = self.get_music_player(ctx)
         mp.clear_modifiers()
+        if mp.current_song.has_playback():
+            mp.current_song.playback.playback_speed(1)
         await ctx.reply(f"Modifiers reset, volume 100% {EMOTES.OK}")
+
+    @modifiers.command()
+    async def speed(self, ctx: commands.Context, speed: float):
+        """Change playback speed, special non pedalboard modifier, only applied to the current song"""
+        if player.MODE != 1:
+            await ctx.reply(f"Not supported in the `eager` mode {EMOTES.SILLY}")
+            return
+        if speed < 0.3 or speed > 3:
+            await ctx.reply(f"Value `{speed}` not allowed {EMOTES.SILLY}")
+            return
+        mp = self.get_music_player(ctx)
+        if mp.current_song.has_playback():
+            mp.current_song.playback.playback_speed(1 / speed)
+
+    @modifiers.command(aliases=("LowShelfFilter",))
+    @cmd_verify()
+    async def bass(self, ctx: commands.Context, value: str):
+        """Change bass [boost, reset, number in db]"""
+        mp = self.get_music_player(ctx)
+        gain_db = 0.0
+        board = mp.effects_board
+        if value.lower() == "reset" or value == "0":
+            for p in board:
+                if isinstance(p, LowShelfFilter):
+                    board.remove(p)
+                    break
+            mp.fix_limiter()
+            await ctx.reply(f"Bass reset {EMOTES.NWELIV}")
+            return
+        elif value.lower() == "boost":
+            gain_db = 4.0
+        elif is_number(value):
+            gain_db = float(value)
+        else:
+            await ctx.reply(f"Wrong parameter. Use [reset, boost or number] {EMOTES.STARE}")
+            return
+        gain_db = numpy.clip(gain_db, -100.0, 20.0)
+        low_shelf = None
+        for p in board:
+            if isinstance(p, LowShelfFilter):
+                low_shelf = p
+                break
+
+        if low_shelf:
+            low_shelf.gain_db = gain_db
+        else:
+            low_shelf = LowShelfFilter(cutoff_frequency_hz=200, gain_db=gain_db)
+            board.insert(0, low_shelf)
+            mp.fix_limiter()
+
+        # TODO use based emote only if the bass is positive value
+        await ctx.reply(f"Bass adjusted by {gain_db}db {EMOTES.BASED}")
+
+    @modifiers.command(aliases=("Gain",))
+    @cmd_verify()
+    async def volume(self, ctx: commands.Context, vol: float):
+        """Change the volume, values in %"""
+        mp = self.get_music_player(ctx)
+        vol = numpy.clip(vol, 0, 300.0)
+        new_db = 0
+        if vol != 100:
+            new_db = 20 * math.log10(vol / 100)
+        mp.set_volume(new_db)
+        await ctx.reply(f"Volume set to {vol}% 🔊")
 
     @commands.command()
     @cmd_verify(True)
@@ -557,8 +604,9 @@ class MusicCog(commands.Cog):
         if len(mp.requests_cache) == 0 and len(mp.cache) == 0:
             log.warning(f"next_song: forcing refill, server: {guild.name}[{guild_id}]")
             mp.refill(True)
+        else:
+            mp.refill()
 
-        mp.refill()
         await asyncio.sleep(PAUSE_DURATION)
         log.info(f"next_song: load and play next song, server: {guild.name}[{guild_id}]")
         mp.load_next_song()
@@ -667,7 +715,7 @@ class MusicCog(commands.Cog):
                 if mp.alone_counter > PAUSE_AFTER:
                     vc.pause()
                     mp.pause()
-                    await vc.channel.send(f"No one around {EMOTES.SAD}\nPaused ⏸️")
+                    await vc.channel.send(f"No one's around {EMOTES.SAD}\nPaused ⏸️")
 
     @check_alone_status.before_loop
     async def before_loop(self):

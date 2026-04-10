@@ -91,6 +91,9 @@ class PCMSource(discord.AudioSource):
     def seek(self, seconds: float):
         raise NotImplementedError
 
+    def playback_speed(self, speed: float):
+        raise NotImplementedError
+
 
 class LazyPCMSource(PCMSource):
     def __init__(self, url: str, pre_process=False):
@@ -136,8 +139,8 @@ class LazyPCMSource(PCMSource):
                         raise
             file_data = response.content
 
-        audio_file = AudioFile(io.BytesIO(file_data))
-        self.buffer = audio_file.resampled_to(self.SAMPLE_RATE, Resample.Quality.ZeroOrderHold)
+        self.audio_file = AudioFile(io.BytesIO(file_data))
+        self.buffer = self.audio_file.resampled_to(self.SAMPLE_RATE, Resample.Quality.ZeroOrderHold)
         if self.buffer.num_channels != 2:
             log.warning(f"LazyPCMSource: File number of channels: {self.buffer.num_channels} != 2")
         super().__init__()
@@ -187,6 +190,15 @@ class LazyPCMSource(PCMSource):
     def remaining(self) -> int:
         """Remaining time in seconds"""
         return (self.buffer.frames - self.buffer.tell()) // self.SAMPLE_RATE
+
+    def playback_speed(self, speed: float):
+        self.paused = True
+        current_pos = self.buffer.tell()
+        current_sample_rate = self.buffer.samplerate
+        new_sample_rate = self.SAMPLE_RATE * speed
+        self.buffer = self.audio_file.resampled_to(new_sample_rate, Resample.Quality.ZeroOrderHold)
+        self.buffer.seek(int(current_pos * (new_sample_rate / current_sample_rate)))
+        self.paused = False
 
 
 class EagerPCMSource(PCMSource):
