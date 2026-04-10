@@ -112,13 +112,13 @@ class LazyPCMSource(PCMSource):
                 "-f",
                 "ogg",
                 "-loglevel",
-                "warning",
+                "error",
                 "pipe:1",  # Output to stdout
             ]
-            process = subprocess.Popen(command, stdout=subprocess.PIPE)
+            process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             file_data, ffmpeg_log = process.communicate()
-            if process.returncode != 0:
-                log.error(f"LazyPCMSource: ffmpeg returned: {ffmpeg_log}")
+            if ffmpeg_log and len(ffmpeg_log) != 0:
+                log.error(f"EagerPCMSource: ffmpeg returned: {ffmpeg_log.decode().strip()}")
         else:
             log.info(f"LazyPCMSource: Fetching song data from '{url}'")
             retries = 4
@@ -159,6 +159,7 @@ class LazyPCMSource(PCMSource):
 
         processed_audio = self.effects_board(chunk, self.SAMPLE_RATE)
         processed_audio *= 32767.0
+        numpy.clip(processed_audio, -32768, 32767, out=processed_audio)
         pcm_chunk = processed_audio.astype(numpy.int16).T.tobytes()
         chunk_size = len(pcm_chunk)
         if chunk_size < self.BYTES_PER_20MS:
@@ -204,13 +205,13 @@ class EagerPCMSource(PCMSource):
             "-ac",
             "2",  # Channels
             "-loglevel",
-            "warning",
+            "error",
             "pipe:1",  # Output to stdout
         ]
-        process = subprocess.Popen(command, stdout=subprocess.PIPE)
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         raw_pcm_data, ffmpeg_log = process.communicate()
-        if process.returncode != 0:
-            log.error(f"EagerPCMSource: ffmpeg returned: {ffmpeg_log}")
+        if ffmpeg_log and len(ffmpeg_log) != 0:
+            log.error(f"EagerPCMSource: ffmpeg returned: {ffmpeg_log.decode().strip()}")
         self.buffer = io.BytesIO(raw_pcm_data)
         super().__init__()
 
@@ -229,6 +230,7 @@ class EagerPCMSource(PCMSource):
             audio_float = audio_data.astype(numpy.float32) / 32768.0
             processed_audio = self.effects_board(audio_float, self.SAMPLE_RATE)
             processed_audio *= 32767.0
+            numpy.clip(processed_audio, -32768, 32767, out=processed_audio)
             chunk = processed_audio.astype(numpy.int16).T.tobytes()
 
         chunk_size = len(chunk)
