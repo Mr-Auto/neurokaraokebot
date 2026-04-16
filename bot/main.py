@@ -4,6 +4,7 @@ from discord import Intents, Activity, ActivityType, StatusDisplayType
 from discord.ext import commands
 from music_interface import MusicCog, NotAllowedError
 from utility_interface import UtilityCog
+from modifiers_interface import ModifiersCog
 from config import EMOTES
 from dotenv import load_dotenv
 from datetime import datetime
@@ -30,6 +31,7 @@ class MyBot(commands.Bot):
     async def setup_hook(self):
         await self.add_cog(MusicCog(self))
         await self.add_cog(UtilityCog(self))
+        await self.add_cog(ModifiersCog())
         self.before_invoke(self.before_command_invoke)
 
     async def on_ready(self):
