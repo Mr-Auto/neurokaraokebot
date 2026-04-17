@@ -132,19 +132,26 @@ class MusicCog(commands.Cog):
     @cmd_verify()
     async def pause(self, ctx: commands.Context):
         vc = ctx.voice_client
-        self.get_music_player(ctx).pause()
+        mp = self.get_music_player(ctx)
+        mp.pause()
         if vc.is_playing():
             vc.pause()
             await ctx.reply(f"Paused ⏸️ {EMOTES.PAUSE}")
+            if mp.update_status:
+                status = f"{EMOTES.PAUSE} {mp.current_song.song_name()}"
+                await ctx.channel.edit(status=status)
 
     @commands.command(priority=2)
     @cmd_verify()
     async def resume(self, ctx: commands.Context):
         vc = ctx.voice_client
-        self.get_music_player(ctx).resume()
+        mp = self.get_music_player(ctx)
+        mp.resume()
         if vc.is_paused():
             vc.resume()
             await ctx.reply(f"Resumed ▶️ {EMOTES.JAM}")
+            if mp.update_status:
+                await ctx.channel.edit(status=mp.current_song.song_name())
 
     @commands.command()
     @cmd_verify()
@@ -603,6 +610,9 @@ class MusicCog(commands.Cog):
                 if mp.alone_counter > PAUSE_AFTER:
                     vc.pause()
                     mp.pause()
+                    if mp.update_status:
+                        status = f"{EMOTES.PAUSE} {mp.current_song.song_name()}"
+                        await vc.channel.edit(status=status)
                     await vc.channel.send(f"No one's around {EMOTES.SAD}\nPaused ⏸️")
 
     @check_alone_status.before_loop
