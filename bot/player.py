@@ -84,6 +84,8 @@ class PCMSource(discord.AudioSource):
     def playback_speed(self, speed: float):
         raise NotImplementedError
 
+    def close(self):
+        raise NotImplementedError
 
 
 class LazyPCMSource(PCMSource):
@@ -195,6 +197,10 @@ class LazyPCMSource(PCMSource):
         self.buffer.seek(int(current_pos * (new_sample_rate / current_sample_rate)))
         self.paused = False
 
+    def close(self):
+        self.buffer.close()
+        self.audio_file = None
+
 
 class EagerPCMSource(PCMSource):
     def __init__(self, url: str):
@@ -267,6 +273,9 @@ class EagerPCMSource(PCMSource):
         remaining_bytes = total_size - current_pos
         return remaining_bytes // self.BYTES_PER_SECOND
 
+    def close(self):
+        self.buffer.close()
+
 
 class Song:
     def __init__(self, json_data: dict, requested_by: str | None = None):
@@ -336,6 +345,10 @@ class MusicPlayer:
         return duration
 
     def load_next_song(self):
+        if self.current_song.has_playback():
+            self.current_song.playback.paused = True
+            self.current_song.playback.close()
+
         if len(self.requests_cache) > 0:
             self.current_song = self.requests_cache.popleft()
         else:
