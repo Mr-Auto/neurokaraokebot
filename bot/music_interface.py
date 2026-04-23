@@ -298,15 +298,27 @@ class MusicCog(commands.Cog):
 
     @commands.command(priority=5)
     @cmd_verify()
-    async def queue(self, ctx: commands.Context):
+    async def queue(self, ctx: commands.Context, page: int = 1):
         """Current queue (next 10 songs)"""
         mp = self.get_music_player(ctx)
-        description = ""
-        # Show max 10 in a queue
-        for song in islice(chain(mp.requests_cache, mp.cache), 10):
-            description += f"- {song.song_name()}\n"
+        queue_size = len(mp.requests_cache) + len(mp.cache)
+        offset = page - 1
+        if offset < 0 or offset * 10 >= queue_size:
+            await ctx.reply(f"No [1-{(queue_size + 9) // 10}] {EMOTES.STARE}")
+            return
 
-        embed = discord.Embed(title="Current queue:", description=description, color=COLORS.QUEUE)
+        description = ""
+        if page == 1:
+            description = f" - ▶️ __{mp.current_song.song_name()}__ 🎵\n-# (playing right now)\n"
+        # Show max 10 in a queue
+        for song in islice(chain(mp.requests_cache, mp.cache), offset * 10, offset * 10 + 10):
+            if song in mp.requests_cache:
+                description += f"- **{song.song_name()}**\n"
+            else:
+                description += f"- {song.song_name()}\n"
+
+        embed = discord.Embed(title=f"📜 Queue", description=description, color=COLORS.QUEUE)
+        embed.set_footer(text=f"(page {page}/{(queue_size + 9) // 10})")
         await ctx.reply(embed=embed)
 
     @commands.command(priority=8)
