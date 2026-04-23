@@ -219,7 +219,44 @@ class MusicCog(commands.Cog):
                 emote_str = EMOTES.NEUROJAM
             case CoverBy.Evil:
                 emote_str = EMOTES.EVILJAM
-        await ctx.reply(f"Playing right now {emote_str}", embed=embed)
+
+        msg = await ctx.reply(f"Playing right now {emote_str}", embed=embed)
+        if song_remaining is None:
+            return
+        symbol = embed.description.rfind("❍")
+        if symbol == -1:
+            return
+        self.bot.loop.create_task(self.update_embed(mp.current_song, msg, embed, symbol))
+
+    async def update_embed(
+        self, song: player.Song, msg: discord.Message, embed: discord.Embed, symbol: int
+    ):
+        line_start = embed.description.rfind("\n", 0, symbol)
+        if line_start == -1:
+            return
+        line_end = embed.description.rfind("▬")
+        if line_end == -1 or symbol > line_end:
+            return
+        description_end = embed.description[line_end + 1 :]
+        duration = song.song_info["duration"]
+        counter = 0
+        while True:
+            await asyncio.sleep(5)
+            remaining = song.remaning()
+            if remaining is None:
+                return
+            pminutes, pseconds = divmod(duration - remaining, 60)
+            seg = (remaining * 10) // duration
+            embed.description = f"{embed.description[:line_start]}\n-# {pminutes}:{pseconds:02} {'▬'*(10-seg)}❍{'▬'*seg}{description_end}"
+            try:
+                await msg.edit(embed=embed)
+            except discord.NotFound:
+                return
+            if remaining <= 0:
+                return
+            counter += 1
+            if counter > 145:
+                return
 
     @commands.command(priority=6)
     @cmd_verify()
