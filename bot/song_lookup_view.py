@@ -50,7 +50,7 @@ class RequestButton(ui.Button):
 
 
 class SongLookupView(ui.LayoutView):
-    def __init__(self, data: list, request_allowed: bool, owner_id: int):
+    def __init__(self, data: list, request_allowed: bool, owner_id: int, name: str = None):
         super().__init__(timeout=60)
         self.data = data
         self.ITEMS_PER_PAGE = 9
@@ -58,7 +58,8 @@ class SongLookupView(ui.LayoutView):
         self.request_allowed = request_allowed
         self.owner_id = owner_id
         self.message = None
-        self.update_view()
+        self.name = name
+        self.update_view() # last
 
     async def on_timeout(self):
         self.update_view(True)
@@ -73,6 +74,8 @@ class SongLookupView(ui.LayoutView):
         start = self.current_page * self.ITEMS_PER_PAGE
         end = min(start + self.ITEMS_PER_PAGE, len(self.data))
         container = ui.Container(accent_color=discord.Color.blue())
+        if self.name:
+            container.add_item(ui.TextDisplay(f"### {self.name}\n"))
         for idx in range(start, end):
             song = Song(self.data[idx])
             text_raw = f"{idx +1}. [{song.song_name()}]({song.get_url()})"

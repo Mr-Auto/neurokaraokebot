@@ -205,7 +205,8 @@ class MusicCog(commands.Cog):
         note = f"Ends <t:{song_end}:R>"
         if mp.is_paused():
             note = f"Ends `PAUSED` {EMOTES.PAUSE}"
-        embed = self.get_song_embed(mp.current_song.song_info, note, footer)
+            song_remaining = None
+        embed = self.get_song_embed(mp.current_song.song_info, note, footer, song_remaining)
         cover_str = " & ".join(mp.current_song.song_info["coverArtists"])
         cover_by = parse_cover_by(cover_str)
         emote_str = EMOTES.JAM
@@ -407,7 +408,9 @@ class MusicCog(commands.Cog):
             await ctx.reply(f"Didn't get playlist back {EMOTES.SILLY}")
             return
 
-        view = SongLookupView(json_result["songListDTOs"], True, ctx.author.id)
+        view = SongLookupView(
+            json_result["songListDTOs"], True, ctx.author.id, json_result.get("name")
+        )
         view.message = await ctx.reply(view=view)
 
     def get_music_player(self, ctx: commands.Context) -> player.MusicPlayer:
@@ -507,8 +510,12 @@ class MusicCog(commands.Cog):
         mp.load_next_song()
         await self.play_current(vc)
 
+    @staticmethod
     def get_song_embed(
-        _, song_info: dict, last_section: str | None = None, footer: str | None = None
+        song_info: dict,
+        last_section: str | None = None,
+        footer: str | None = None,
+        remaining: int = None,
     ):
         original_by = " & ".join(song_info["originalArtists"])
         date = song_info.get("streamDate")
@@ -533,7 +540,13 @@ class MusicCog(commands.Cog):
 
         play_count = song_info["playCount"]
         song_name = song.song_name()
-        description = f"Cover by {cover_str}\n\nOriginal by {original_by}\n\nStream date: {date}\n{minutes}:{seconds:02} {play_count} plays"
+        description = f"Cover by {cover_str}\n\nOriginal by {original_by}\n\nStream date: {date}"
+        if remaining and song_info["duration"] and song_info["duration"] != 0:
+            pminutes, pseconds = divmod(song_info["duration"] - remaining, 60)
+            seg = (remaining * 10) // song_info["duration"]
+            description += f"\n-# {pminutes}:{pseconds:02} {'▬'*(10-seg)}❍{'▬'*seg} {minutes}:{seconds:02}\n{play_count} plays"
+        else:
+            description += f"\n{minutes}:{seconds:02} {play_count} plays"
         if last_section:
             description += f"\n\n{last_section}"
         embed = discord.Embed(title=song_name, description=description, color=color, url=song_url)
@@ -560,7 +573,7 @@ class MusicCog(commands.Cog):
                     return
                 was_paused = mp.is_paused()
                 mp.pause()
-                log.info("Detected active playback, attempting to resume")
+                log.warning("Detected active playback, attempting to resume")
                 await asyncio.sleep(1)
                 vc = await before.channel.connect(reconnect=False)
                 # We use play_current that will continue playing the song
