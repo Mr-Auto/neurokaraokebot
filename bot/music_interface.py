@@ -349,21 +349,18 @@ class MusicCog(commands.Cog):
             return
 
         mp = self.get_music_player(ctx)
-        song_remaining = mp.current_song.remaning() or 0
         queue_duration = mp.request_queue_duration()
         playing_in_str = f"`PAUSED` {EMOTES.PAUSE}"
         if not mp.is_paused():
             if queue_duration is not None:
-                playing_in = int(time.time()) + queue_duration + song_remaining + PAUSE_DURATION
+                playing_in = int(time.time()) + queue_duration
                 playing_in_str = f"<t:{playing_in}:R>"
             else:
                 playing_in_str = f"`Unknown` {EMOTES.SILLY}"
 
-        requested_song = player.Song(result_list[0], ctx.author.name)
-        mp.requests_cache.append(requested_song)
-        song_name = requested_song.song_name()
+        position, song = mp.request_song(result_list[0], ctx.author.name)
         await ctx.reply(
-            f"Added `{song_name}` at position {len(mp.requests_cache)} in the queue\nPlaying {playing_in_str}"
+            f"Added `{song.song_name()}` at position {position} in the queue\nPlaying {playing_in_str}"
         )
         mp.refill()
 

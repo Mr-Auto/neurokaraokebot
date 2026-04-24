@@ -342,6 +342,7 @@ class MusicPlayer:
             if song_duration is None:
                 return None
             duration += song_duration + PAUSE_DURATION
+        duration += PAUSE_DURATION + self.current_song.remaning() or 0
         return duration
 
     def load_next_song(self):
@@ -454,3 +455,9 @@ class MusicPlayer:
     def apply_effects_board(self):
         if self.current_song.has_playback():
             self.current_song.playback.effects_board = self.effects_board
+
+    def request_song(self, song_data: dict, requested_by: str):
+        requested_song = Song(song_data, requested_by)
+        self.requests_cache.append(requested_song)
+        self.refill()
+        return len(self.requests_cache), requested_song

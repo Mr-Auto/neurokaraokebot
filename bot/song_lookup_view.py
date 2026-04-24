@@ -32,20 +32,18 @@ class RequestButton(ui.Button):
         await interaction.response.edit_message(view=self.view)
         cog = interaction.client.get_cog("MusicCog")
         mp: MusicPlayer = cog.music_players.get(interaction.guild.id)
-        song_remaining = mp.current_song.remaning() or 0
         playing_in_str = f"`PAUSED` {EMOTES.PAUSE}"
         if not mp.is_paused():
             queue_duration = mp.request_queue_duration()
             if queue_duration is not None:
-                playing_in = int(time.time()) + queue_duration + song_remaining + PAUSE_DURATION
+                playing_in = int(time.time()) + queue_duration
                 playing_in_str = f"<t:{playing_in}:R>"
             else:
                 playing_in_str = f"`in Unknown` {EMOTES.SILLY}"
-        requested_song = Song(self.song_data, interaction.user.name)
-        mp.requests_cache.append(requested_song)
-        mp.refill()
+
+        position, song = mp.request_song(self.song_data, interaction.user.name)
         await interaction.channel.send(
-            f"{interaction.user.mention} requested: `{requested_song.song_name()}`\nAdded to the queue at position {len(mp.requests_cache)}, playing {playing_in_str}"
+            f"{interaction.user.mention} requested: `{song.song_name()}`\nAdded to the queue at position {position}, playing {playing_in_str}"
         )
 
 
