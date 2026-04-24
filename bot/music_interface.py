@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands, tasks
+import discord.ui
 import logging
 import asyncio
 import requests
@@ -20,7 +21,7 @@ from config import (
     PLAYLIST_API,
 )
 import player
-from song_lookup_view import SongLookupView
+from song_lookup_view import SongLookupView, RequestButton
 
 
 log = logging.getLogger()
@@ -373,7 +374,30 @@ class MusicCog(commands.Cog):
             await ctx.reply("Unable to fetch data from api.neurokaraoke.com")
             return
         embed = self.get_song_embed(data[0])
-        await ctx.reply(embed=embed)
+        vc = ctx.voice_client
+        view = None
+        if (
+            vc
+            and self.get_music_player(ctx)
+            and ctx.channel.id == vc.channel.id
+            and ctx.author.voice
+            and ctx.author.voice.channel.id == vc.channel.id
+        ):
+            view = discord.ui.View(timeout=60)
+            view.add_item(RequestButton(data[0]))
+
+            async def on_view_timeout():
+                if view.message:
+                    try:
+                        await view.message.edit(embed=embed, view=None)
+                    except discord.NotFound:
+                        pass
+
+            view.on_timeout = on_view_timeout
+
+        message = await ctx.reply(embed=embed, view=view)
+        if view:
+            view.message = message
 
     @commands.command(priority=7)
     @cmd_verify()
