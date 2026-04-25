@@ -242,7 +242,7 @@ class MusicCog(commands.Cog):
         duration = song.song_info["duration"]
         counter = 0
         while True:
-            await asyncio.sleep(5)
+            await asyncio.sleep(2)
             remaining = song.remaning()
             if remaining is None:
                 return
