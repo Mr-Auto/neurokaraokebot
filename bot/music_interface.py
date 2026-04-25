@@ -7,6 +7,7 @@ import requests
 import time
 import typing
 import enum
+import io
 import datetime
 from itertools import chain, islice
 from config import (
@@ -22,7 +23,6 @@ from config import (
 )
 import player
 from song_lookup_view import SongLookupView, RequestButton
-
 
 log = logging.getLogger()
 
@@ -207,7 +207,9 @@ class MusicCog(commands.Cog):
         if mp.is_paused():
             note = f"Ends `PAUSED` {EMOTES.PAUSE}"
             song_remaining = None
-        embed = self.get_song_embed(mp.current_song.song_info, note, footer, song_remaining)
+        embed, discord_file = self.get_song_embed(
+            mp.current_song.song_info, note, footer, song_remaining
+        )
         cover_str = " & ".join(mp.current_song.song_info["coverArtists"])
         cover_by = parse_cover_by(cover_str)
         emote_str = EMOTES.JAM
@@ -221,7 +223,7 @@ class MusicCog(commands.Cog):
             case CoverBy.Evil:
                 emote_str = EMOTES.EVILJAM
 
-        msg = await ctx.reply(f"Playing right now {emote_str}", embed=embed)
+        msg = await ctx.reply(f"Playing right now {emote_str}", embed=embed, file=discord_file)
         if song_remaining is None:
             return
         symbol = embed.description.rfind("❍")
@@ -282,7 +284,7 @@ class MusicCog(commands.Cog):
         note = f"Playing <t:{song_end}:R>"
         if mp.is_paused():
             note = f"Playing `PAUSED` {EMOTES.PAUSE}"
-        embed = self.get_song_embed(next_song.song_info, note, footer)
+        embed, discord_file = self.get_song_embed(next_song.song_info, note, footer)
         cover_str = " & ".join(next_song.song_info["coverArtists"])
         cover_by = parse_cover_by(cover_str)
         emote_str = EMOTES.JAM
@@ -295,7 +297,7 @@ class MusicCog(commands.Cog):
                 emote_str = EMOTES.NEUROJAM
             case CoverBy.Evil:
                 emote_str = EMOTES.EVILJAM
-        await ctx.reply(f"Next song: {emote_str}", embed=embed)
+        await ctx.reply(f"Next song: {emote_str}", embed=embed, file=discord_file)
 
     @commands.command(priority=5)
     @cmd_verify()
@@ -373,7 +375,7 @@ class MusicCog(commands.Cog):
         if not data or not isinstance(data, list) or len(data) == 0:
             await ctx.reply("Unable to fetch data from api.neurokaraoke.com")
             return
-        embed = self.get_song_embed(data[0])
+        embed, discord_file = self.get_song_embed(data[0])
         vc = ctx.voice_client
         view = None
         if (
@@ -395,7 +397,7 @@ class MusicCog(commands.Cog):
 
             view.on_timeout = on_view_timeout
 
-        message = await ctx.reply(embed=embed, view=view)
+        message = await ctx.reply(embed=embed, view=view, file=discord_file)
         if view:
             view.message = message
 
@@ -620,13 +622,24 @@ class MusicCog(commands.Cog):
         if last_section:
             description += f"\n\n{last_section}"
         embed = discord.Embed(title=song_name, description=description, color=color, url=song_url)
+        discord_file = None
         if song_info.get("coverArt") and song_info["coverArt"].get("absolutePath"):
             image_url = IMAGES_URL
             image_url += song_info["coverArt"]["absolutePath"]
             image_url += "/width=900,height=900,quality=90,fit=crop,gravity=auto"
-            embed.set_thumbnail(url=image_url)
+            if song_info["coverArt"]["contentType"] != "image/webp":
+                embed.set_thumbnail(url=image_url)
+            else:
+                response = requests.get(image_url)
+                if response.status_code != 200:
+                    embed.set_thumbnail(url=image_url)
+                else:
+                    with io.BytesIO(response.content) as image_binary:
+                        discord_file = discord.File(fp=image_binary, filename="attachment.gif")
+                        embed.set_thumbnail(url=discord_file.uri)
+
         embed.set_footer(text=footer)
-        return embed
+        return embed, discord_file
 
     @commands.Cog.listener()
     async def on_voice_state_update(

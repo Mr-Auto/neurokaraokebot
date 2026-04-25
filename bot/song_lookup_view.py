@@ -4,7 +4,7 @@ import time
 from discord import ui
 from datetime import datetime
 from player import MusicPlayer, Song
-from config import PAUSE_DURATION, EMOTES
+from config import EMOTES
 
 log = logging.getLogger()
 
