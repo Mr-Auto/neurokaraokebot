@@ -114,8 +114,7 @@ class MusicCog(commands.Cog):
     @commands.command(priority=1)
     async def karaokehere(self, ctx: commands.Context):
         """Invite bot to VC"""
-        mp = self.get_music_player(ctx)
-        if ctx.voice_client or mp:
+        if ctx.voice_client:
             return
         if ctx.channel.type != discord.ChannelType.voice:
             await ctx.reply(f"Can't play audio in '{ctx.channel.type}' channel! {EMOTES.SAD}")
