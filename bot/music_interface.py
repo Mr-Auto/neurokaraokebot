@@ -409,6 +409,8 @@ class MusicCog(commands.Cog):
                 await ctx.reply(f"Status updates back ON {EMOTES.OK}")
                 mp = self.get_music_player(ctx)
                 song_name = mp.current_song.song_name()
+                if mp.is_paused():
+                    song_name = f"{EMOTES.PAUSE} {song_name}"
                 await ctx.channel.edit(status=song_name)
             else:
                 await ctx.reply(f"Status updates OFF {EMOTES.NWELIV}")
@@ -510,7 +512,7 @@ class MusicCog(commands.Cog):
         log.info(f"start: Starting karaoke in: ({ctx.guild.name} / {ctx.channel.name})")
         new_mp.refill()
 
-    async def play_current(self, vc: discord.VoiceClient):
+    async def play_current(self, vc: discord.VoiceClient, start_paused=False):
         mp = self.get_music_player(vc)
         if not mp.current_song.has_playback():
             await vc.channel.send(EMOTES.LOADING)
@@ -534,6 +536,8 @@ class MusicCog(commands.Cog):
                 signal_type="music",
                 after=lambda e: self.playback_end(vc, e),
             )
+            if start_paused:
+                vc.pause()
         except Exception as e:
             playback_size = (
                 mp.current_song.playback.size() if mp.current_song.has_playback() else None
@@ -546,6 +550,8 @@ class MusicCog(commands.Cog):
         else:
             if self.updatestatus:
                 song_name = mp.current_song.song_name()
+                if start_paused:
+                    song_name = f"{EMOTES.PAUSE} {song_name}"
                 await vc.channel.edit(status=song_name)
 
     def playback_end(self, vc: discord.VoiceClient, error):
@@ -658,12 +664,12 @@ class MusicCog(commands.Cog):
                 log.warning("Detected active playback, attempting to resume")
                 await asyncio.sleep(1)
                 vc = await before.channel.connect(reconnect=False)
-                # We use play_current that will continue playing the song
-                # Even if alone_counter is met, we need to start playback to put it in valid pause state
+                # We use play_current so it will continue playing the song
+                # Even if alone_counter is met, we need to start playback to put it in valid vc state
                 # since the MusicPlayer is paused, it will send silence anyway
-                await self.play_current(vc)
-                if mp.alone_counter > PAUSE_AFTER or was_paused:
-                    vc.pause()
+                await self.play_current(vc, was_paused)
+                if mp.alone_counter > PAUSE_AFTER:
+                    pass
                 else:
                     # wait a little before resuming
                     await asyncio.sleep(0.2)
