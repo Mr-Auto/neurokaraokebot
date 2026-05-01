@@ -111,7 +111,7 @@ class MusicCog(commands.Cog):
         self.check_alone_status.cancel()
         self.music_players = {}
 
-    @commands.command(priority=1)
+    @commands.command(priority=1, aliases=("here",))
     async def karaokehere(self, ctx: commands.Context):
         """Invite bot to VC"""
         if ctx.voice_client:
@@ -128,7 +128,7 @@ class MusicCog(commands.Cog):
             await ctx.reply(f"Something went wrong {EMOTES.SILLY}")
             raise
 
-    @commands.command(priority=2)
+    @commands.command(priority=2, aliases=("⏸️",))
     @cmd_verify()
     async def pause(self, ctx: commands.Context):
         vc = ctx.voice_client
@@ -141,7 +141,7 @@ class MusicCog(commands.Cog):
                 status = f"{EMOTES.PAUSE} {mp.current_song.song_name()}"
                 await ctx.channel.edit(status=status)
 
-    @commands.command(priority=2)
+    @commands.command(priority=2, aliases=("▶️",))
     @cmd_verify()
     async def resume(self, ctx: commands.Context):
         vc = ctx.voice_client
@@ -189,7 +189,7 @@ class MusicCog(commands.Cog):
             await ctx.reply(f"Skipping current song, no more songs in queue {EMOTES.SILLY}")
             log.error(f"skip: no songs in the queue?")
 
-    @commands.command(priority=6)
+    @commands.command(priority=6, aliases=("current", "currentsong"))
     @cmd_verify()
     async def song(self, ctx: commands.Context):
         """Check current song"""
@@ -260,7 +260,7 @@ class MusicCog(commands.Cog):
             if counter > 145:
                 return
 
-    @commands.command(priority=6)
+    @commands.command(priority=6, aliases=("ns",))
     @cmd_verify()
     async def nextsong(self, ctx: commands.Context):
         """Check the next song"""
@@ -323,9 +323,9 @@ class MusicCog(commands.Cog):
         embed.set_footer(text=f"(page {page}/{(queue_size + 9) // 10})")
         await ctx.reply(embed=embed)
 
-    @commands.command(priority=8)
+    @commands.command(priority=8, aliases=("sr", "songrequests"))
     @cmd_verify()
-    async def sr(
+    async def songrequest(
         self, ctx: commands.Context, *, search_string: typing.Union[discord.PartialEmoji, str]
     ):
         """Song request"""
@@ -366,7 +366,7 @@ class MusicCog(commands.Cog):
         )
         mp.refill()
 
-    @commands.command()
+    @commands.command(aliases=("random",))
     @cmd_verify(True)
     async def randomsong(self, ctx: commands.Context):
         """Random song from neurokaraoke.com"""
@@ -416,7 +416,7 @@ class MusicCog(commands.Cog):
                 await ctx.reply(f"Status updates OFF {EMOTES.NWELIV}")
         self.updatestatus = update
 
-    @commands.command()
+    @commands.command(aliases=("fs",))
     @cmd_verify(True)
     async def findsong(self, ctx: commands.Context, *, search_string: str):
         """Lookup for specific song, allows request from the list if used in VC"""
@@ -460,7 +460,7 @@ class MusicCog(commands.Cog):
         else:
             await ctx.reply(f"Current mode: `EagerPCMSource(ffmpeg)` {EMOTES.PAUSE}")
 
-    @commands.command()
+    @commands.command(aliases=("playlists", "pl"))
     @cmd_verify()
     async def playlist(self, ctx: commands.Context, url: str):
         """Open playlist from neurokaraoke (full url or just id), allowing you to request songs from it"""

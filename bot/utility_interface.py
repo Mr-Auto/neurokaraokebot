@@ -24,7 +24,11 @@ class UtilityCog(commands.Cog):
             cmds, key=lambda x: (x.__original_kwargs__.get("priority", 999), x.name)
         )
         for command in sorted_commands:
-            embed.add_field(name=f"!{command.name}", value=command.help or "", inline=False)
+            name = f"!{command.name}"
+            if command.aliases:
+                name += " / !"
+                name += " / !".join(command.aliases)
+            embed.add_field(name=name, value=command.help or "", inline=False)
         await ctx.reply(embed=embed)
 
     @commands.command(hidden=True)
