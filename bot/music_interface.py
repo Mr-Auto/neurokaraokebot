@@ -10,19 +10,9 @@ import enum
 import io
 import datetime
 from itertools import chain, islice
-from config import (
-    EMOTES,
-    COLORS,
-    ALLOWED_CHANNELS,
-    PAUSE_AFTER,
-    SEARCH_API,
-    RANDOM_API,
-    IMAGES_URL,
-    PAUSE_DURATION,
-    PLAYLIST_API,
-)
+from config import *
 import player
-from song_lookup_view import SongLookupView, RequestButton
+from song_lookup_view import SongLookupView, RequestButton, SetlistsView
 
 log = logging.getLogger()
 
@@ -486,6 +476,25 @@ class MusicCog(commands.Cog):
         )
         view.message = await ctx.reply(view=view)
 
+    @commands.command(aliases=("setlists",))
+    @cmd_verify()
+    async def setlist(self, ctx: commands.Context):
+        """Show all avaible karaoke setlists, allows opening them and songs request"""
+        response = requests.get(SETLISTS_API)
+        if response.status_code != 200:
+            await ctx.reply(
+                f"Something went wrong, status code: `{response.status_code}` {EMOTES.SILLY}"
+            )
+            return
+
+        json_result = response.json()
+        if not json_result or len(json_result) == 0:
+            await ctx.reply(f"Didn't get playlist back {EMOTES.SILLY}")
+            return
+
+        view = SetlistsView(json_result, ctx.author.id)
+        view.message = await ctx.reply(view=view)
+
     def get_music_player(self, ctx: commands.Context) -> player.MusicPlayer:
         return self.music_players.get(ctx.guild.id)
 
@@ -628,20 +637,17 @@ class MusicCog(commands.Cog):
             description += f"\n\n{last_section}"
         embed = discord.Embed(title=song_name, description=description, color=color, url=song_url)
         discord_file = None
-        if song_info.get("coverArt") and song_info["coverArt"].get("absolutePath"):
-            image_url = IMAGES_URL
-            image_url += song_info["coverArt"]["absolutePath"]
-            image_url += "/width=900,height=900,quality=90,fit=crop,gravity=auto"
-            if song_info["coverArt"]["contentType"] != "image/webp":
-                embed.set_thumbnail(url=image_url)
+        image_data = song.get_cover_art(True)
+        if image_data:
+            if type(image_data) is str:
+                embed.set_thumbnail(url=image_data)
+            elif type(image_data) is discord.File:
+                embed.set_thumbnail(url=image_data.uri)
+                discord_file = image_data
             else:
-                response = requests.get(image_url)
-                if response.status_code != 200:
-                    embed.set_thumbnail(url=image_url)
-                else:
-                    with io.BytesIO(response.content) as image_binary:
-                        discord_file = discord.File(fp=image_binary, filename="attachment.gif")
-                        embed.set_thumbnail(url=discord_file.uri)
+                log.error(
+                    f"get_song_embed: got unknown data type for song cover: {type(image_data)}"
+                )
 
         embed.set_footer(text=footer)
         return embed, discord_file

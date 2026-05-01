@@ -12,7 +12,7 @@ from typing import TypeVar
 from pedalboard.io import AudioFile
 from collections import deque
 from itertools import chain, islice
-from config import MAX_CACHE, STORAGE_URL, RANDOM_API, SONG_URL, PAUSE_DURATION
+from config import *
 
 # TODO fix deque mutated during iteration // maybe fixed?
 # keep in mind the forced feill, probably need to lock it for that
@@ -314,6 +314,24 @@ class Song:
 
     def dump_json(self, indent=4) -> str:
         return json.dumps(self.song_info, indent=indent)
+
+    def get_cover_art(self, download_animated=False) -> str | discord.File | None:
+        if self.song_info.get("coverArt") and self.song_info["coverArt"].get("absolutePath"):
+            image_url = IMAGES_URL
+            image_url += self.song_info["coverArt"]["absolutePath"]
+            image_url += "/width=900,height=900,quality=90,fit=crop,gravity=auto"
+            if not download_animated or self.song_info["coverArt"]["contentType"] != "image/webp":
+                return image_url
+            else:
+                response = requests.get(image_url)
+                if response.status_code != 200:
+                    return image_url
+                else:
+                    with io.BytesIO(response.content) as image_binary:
+                        discord_file = discord.File(fp=image_binary, filename="attachment.gif")
+                        return discord_file
+
+        return None
 
 
 class MusicPlayer:

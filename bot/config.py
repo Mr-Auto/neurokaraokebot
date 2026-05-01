@@ -16,7 +16,8 @@ SEARCH_API = "https://api.neurokaraoke.com/api/songs"
 IMAGES_URL = "https://images.neurokaraoke.com"
 COVER_ARTITS = "https://api.neurokaraoke.com/api/filters/cover-artists?page=0&pageSize=50"
 PLAYLIST_API = "https://api.neurokaraoke.com/api/playlist/"
-
+SETLISTS_API = "https://api.neurokaraoke.com/api/playlists?startIndex=0&pageSize=1000&search=&sortBy=&sortDescending=False&isSetlist=True&year=0"
+PLAYLIST_URL = "https://www.evilkaraoke.com/playlist/"
 
 from enum import IntEnum
 import json
