@@ -51,7 +51,7 @@ class RequestButton(ui.Button):
 
 
 class SongLookupView(ui.LayoutView):
-    ITEMS_PER_PAGE = 9
+    ITEMS_PER_PAGE = 6
 
     def __init__(self, data: list, request_allowed: bool, owner_id: int, name: str = None):
         super().__init__(timeout=60)
@@ -133,17 +133,20 @@ class SongLookupView(ui.LayoutView):
             date = datetime.fromisoformat(date).strftime("%B %d, %Y")
             text_raw += f"\n-# {date}\n"
         text = ui.TextDisplay(text_raw)
+        ret_list = []
+        cover_url = song.get_cover_art()
+        if cover_url:
+            image = ui.Thumbnail(media=cover_url, description="Cover art")
+            ret_list.append(ui.Section(text, accessory=image))
+        else:
+            ret_list.append(text)
+
         if self.request_allowed:
             was_requested = item.get("_requested") or False
-            section = ui.Section(text, accessory=RequestButton(item, was_requested))
-            return section
-        else:
-            cover_url = song.get_cover_art()
-            if cover_url:
-                image = ui.Thumbnail(media=cover_url, description="Cover art")
-                return ui.Section(text, accessory=image)
-
-            return text
+            some_row = ui.ActionRow()
+            some_row.add_item(RequestButton(item, was_requested))
+            ret_list.append(some_row)
+        return ret_list
 
 
 class ButtonType(Enum):
