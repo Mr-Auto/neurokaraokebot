@@ -712,7 +712,10 @@ class MusicCog(commands.Cog):
             if not vc or mp.is_paused() or vc.is_paused():
                 continue
             # includes the bot itself
-            if len(vc.channel.members) < 2:
+            undeafened_members = [
+                m for m in vc.channel.members if not (m.voice.self_deaf or m.voice.deaf)
+            ]
+            if undeafened_members < 2:
                 mp.alone_counter += 1
                 if mp.alone_counter > PAUSE_AFTER:
                     vc.pause()
@@ -720,7 +723,7 @@ class MusicCog(commands.Cog):
                     if mp.update_status:
                         status = f"{EMOTES.PAUSE} {mp.current_song.song_name()}"
                         await vc.channel.edit(status=status)
-                    await vc.channel.send(f"No one's around {EMOTES.SAD}\nPaused ⏸️")
+                    await vc.channel.send(f"No one's listening {EMOTES.SAD}\nPaused ⏸️")
 
     @check_alone_status.before_loop
     async def before_loop(self):
