@@ -21,7 +21,7 @@ def format_time_string(seconds: int) -> str:
         if value > 0:
             parts.append(f"{value}{name}")
 
-    return ", ".join(parts) if parts else "0s"
+    return " ".join(parts) if parts else "0s"
 
 
 class UtilityCog(commands.Cog):
