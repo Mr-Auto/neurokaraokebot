@@ -50,6 +50,7 @@ class _EmoteCollection:
     EVILJAM_LIST: list[str] = field(default_factory=list)
     OK_LIST: list[str] = field(default_factory=list)
     WAVE_LIST: list[str] = field(default_factory=list)
+    _filename = "data/emotes.json"
 
     @property
     def SILLY(self) -> str:
@@ -139,9 +140,9 @@ class _EmoteCollection:
             raise ValueError(f"Group '{group_name}' is invalid or read-only.")
 
     @classmethod
-    def _load(cls, filename="emotes.json"):
+    def _load(cls):
         try:
-            with open(filename, "r") as f:
+            with open(cls._filename, "r") as f:
                 raw = json.load(f).get("EMOTES", {})
                 mapped = {f"{k}_LIST": v for k, v in raw.items()}
                 return cls(**mapped)
@@ -149,11 +150,11 @@ class _EmoteCollection:
             print(e)
             return cls()
 
-    def save(self, filename="emotes.json"):
+    def save(self):
         """Dumps the emotes to json file"""
         raw_dict = asdict(self)
         clean_dict = {k.replace("_LIST", ""): v for k, v in raw_dict.items()}
-        with open(filename, "w") as f:
+        with open(self._filename, "w") as f:
             json.dump({"EMOTES": clean_dict}, f, indent=4)
 
 

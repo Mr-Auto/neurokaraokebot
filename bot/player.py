@@ -474,6 +474,7 @@ class MusicPlayer:
         if self.current_song.has_playback():
             self.current_song.playback.effects_board = self.effects_board
 
+    # used for single song request, setlist request have separate logic
     def request_song(self, song_data: dict, requested_by: str):
         requested_song = Song(song_data, requested_by)
         self.requests_cache.append(requested_song)

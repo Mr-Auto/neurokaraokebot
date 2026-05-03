@@ -76,7 +76,9 @@ class MyBot(commands.Bot):
 
 
 timestamp = datetime.now().strftime("%y%m%d-%H%M%S")
-log_filename = f"neurokaraoke_{timestamp}.log"
+os.makedirs("logs", exist_ok=True)
+os.makedirs("data", exist_ok=True)
+log_filename = f"logs/neurokaraoke_{timestamp}.log"
 handler = logging.FileHandler(filename=log_filename, encoding="utf-8", mode="w")
 formatter = logging.Formatter("[{asctime}] [{levelname:<8} {module:>15}] {message}", style="{")
 handler.setFormatter(formatter)

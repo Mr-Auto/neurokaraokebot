@@ -10,7 +10,7 @@ from music_interface import cmd_verify, is_number
 
 # pitchshift is too heavy
 
-PRESETS_FILE = "presets.json"
+PRESETS_FILE = "data/presets.json"
 
 
 class ModifiersCog(commands.Cog):
