@@ -1,13 +1,27 @@
+import typing
 import discord
 import subprocess
 import sys
 import logging
 import asyncio
 from discord.ext import commands
+
+import stats
 from music_interface import cmd_verify
 from config import EMOTES
 
 log = logging.getLogger()
+
+
+def format_time_string(seconds: int) -> str:
+    intervals = [(31536000, "yr"), (86400, "d"), (3600, "h"), (60, "m"), (1, "s")]
+    parts = []
+    for count, name in intervals:
+        value, seconds = divmod(seconds, count)
+        if value > 0:
+            parts.append(f"{value}{name}")
+
+    return ", ".join(parts) if parts else "0s"
 
 
 class UtilityCog(commands.Cog):
@@ -68,6 +82,48 @@ class UtilityCog(commands.Cog):
                 message += emote_str
             if message:
                 await ctx.reply(message)
+
+    @commands.command()
+    @cmd_verify(True)
+    async def stats(self, ctx: commands.Context, option: typing.Union[discord.Member, str] = None):
+        """Param: [None / @Mention / user name / "server"] displays stats"""
+        if option is None:
+            option = ctx.author
+        if isinstance(option, discord.Member):
+            data = stats.users.get_user_data(option.id)
+            if data is None:
+                await ctx.reply(f"No data for **{option.name}** {EMOTES.SILLY}")
+                return
+            listening_time = data.get("total_time", 0)
+            request_num = data.get("requests", 0)
+            songs_listeded_to = data.get("song_count", 0)
+            message = (
+                f"### {option.mention} stats:\n\n"
+                f"Total time listening: `{format_time_string(listening_time)}`\n"
+                f"Listened to: `{songs_listeded_to}` songs\n"
+                f"Requested: `{request_num}` songs"
+            )
+            embed = discord.Embed(description=message, color=option.color)
+            embed.set_thumbnail(url=option.avatar.url)
+            await ctx.reply(embed=embed)
+        elif option.lower() == "server":
+            data = stats.servers.get_server_data(ctx.guild.id)
+            if data is None:
+                await ctx.reply(f"No data for this server {EMOTES.SILLY}")
+                return
+            playing_time = data.get("total_time", 0)
+            request_num = data.get("requests", 0)
+            songs_played = data.get("song_count", 0)
+            message = (
+                f"\nTotal time playing: `{format_time_string(playing_time)}`\n"
+                f"Played: `{songs_played}` songs\n"
+                f"Requests: `{request_num}` songs"
+            )
+            embed = discord.Embed(title=f"{ctx.guild.name} stats:", description=message)
+            embed.set_thumbnail(url=ctx.guild.icon.url)
+            await ctx.reply(embed=embed)
+        else:
+            await ctx.reply(f"Unknown user `{option}` {EMOTES.SIDE_EYE}")
 
     @commands.command(hidden=True)
     @commands.is_owner()

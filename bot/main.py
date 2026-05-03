@@ -1,13 +1,15 @@
 import logging
 import os
+from dotenv import load_dotenv
+from datetime import datetime
 from discord import Intents, Activity, ActivityType, StatusDisplayType
 from discord.ext import commands
+
+import stats
 from music_interface import MusicCog, NotAllowedError
 from utility_interface import UtilityCog
 from modifiers_interface import ModifiersCog
 from config import EMOTES
-from dotenv import load_dotenv
-from datetime import datetime
 
 log = logging.getLogger()
 
@@ -78,6 +80,7 @@ class MyBot(commands.Bot):
 timestamp = datetime.now().strftime("%y%m%d-%H%M%S")
 os.makedirs("logs", exist_ok=True)
 os.makedirs("data", exist_ok=True)
+stats.load()
 log_filename = f"logs/neurokaraoke_{timestamp}.log"
 handler = logging.FileHandler(filename=log_filename, encoding="utf-8", mode="w")
 formatter = logging.Formatter("[{asctime}] [{levelname:<8} {module:>15}] {message}", style="{")
@@ -86,4 +89,6 @@ bot = MyBot()
 print("Starting up")
 load_dotenv()
 bot.run(os.getenv("BOT_TOKEN"), log_handler=handler, log_formatter=formatter, root_logger=True)
+stats.save()
 print("Shutting down")
+log.info("Shutting down")

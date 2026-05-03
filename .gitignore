@@ -1,6 +1,6 @@
 .env
-emotes.json
-presets.json
+data/
+logs/
 *.log
 __pycache__/
 *.py[cod]
