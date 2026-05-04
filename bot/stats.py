@@ -152,7 +152,13 @@ def load():
         pass
 
 
-def save():
+_final = False
+
+
+def save(final=False):
+    global _final
+    if _final:
+        return
     for user_id in users.listening_start:
         users.cache_listening_time(user_id)
 
@@ -163,6 +169,7 @@ def save():
     with open(_stats_filename, "w") as f:
         json.dump(_data, f, indent=4)
     _log.info("Successfully saved stats")
+    _final = final
 
 
 def song_requested(guild_id: int, requested_by_id: int):
