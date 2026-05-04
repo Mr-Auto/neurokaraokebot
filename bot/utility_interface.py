@@ -84,9 +84,25 @@ class UtilityCog(commands.Cog):
                 await ctx.reply(message)
 
     @commands.command()
+    @commands.is_owner()
+    async def dumpstats(self, ctx: commands.Context):
+        try:
+            stats.save()
+        except Exception as e:
+            await ctx.reply(f"Something went wrong {EMOTES.SILLY}")
+            log.error(str(e), exc_info=e)
+        else:
+            await ctx.reply(f"Stats saved successfully {EMOTES.HAPPY}")
+
+    @commands.command()
     @cmd_verify(True)
-    async def stats(self, ctx: commands.Context, option: typing.Union[discord.Member, str] = None):
-        """Param: [None / @Mention / user name / "server"] displays stats"""
+    async def stats(
+        self,
+        ctx: commands.Context,
+        option: typing.Union[discord.Member, str] = None,
+        top_option: str = None,
+    ):
+        """Param: [None / @Mention / user name / "server" / "top"] displays stats"""
         if option is None:
             option = ctx.author
         if isinstance(option, discord.Member):
@@ -121,6 +137,36 @@ class UtilityCog(commands.Cog):
             )
             embed = discord.Embed(title=f"{ctx.guild.name} stats:", description=message)
             embed.set_thumbnail(url=ctx.guild.icon.url)
+            await ctx.reply(embed=embed)
+        elif option.lower() == "top":
+            top_comparison = stats.DataType.Time
+            if top_option is None:
+                pass
+            else:
+                top_option = top_option.lower()
+                if top_option in ("time", "listen", "listening", "listeners"):
+                    top_comparison = stats.DataType.Time
+                elif top_option in ("songs", "song", "count", "number", "listened"):
+                    top_comparison = stats.DataType.SongCount
+                elif top_option in ("requests", "requested", "asked", "queued"):
+                    top_comparison = stats.DataType.Request
+                else:
+                    await ctx.reply(f"Unknown statistic, use: [time, songs, requests]")
+                    return
+
+            top = stats.users.get_top(5, top_comparison)
+            leaderboard_text = ""
+            for rank, users in top.items():
+                if not users:
+                    continue
+
+                for user_id, score in users:
+                    if top_comparison == stats.DataType.Time:
+                        score = format_time_string(score)
+                    leaderboard_text += f"{rank+1}. <@{user_id}>: {score}\n"
+
+            title = top_comparison.capitalize().replace("_", " ")
+            embed = discord.Embed(title=f"🏆 Top by {title} 🏆", description=leaderboard_text)
             await ctx.reply(embed=embed)
         else:
             await ctx.reply(f"Unknown user `{option}` {EMOTES.SIDE_EYE}")

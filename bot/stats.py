@@ -1,3 +1,4 @@
+import enum
 import json
 import time
 import logging
@@ -7,7 +8,15 @@ _stats_filename = "data/stats.json"
 _log = logging.getLogger()
 
 
-def _increment(data: dict, uid: int, name: str):
+class DataType(enum.StrEnum):
+    Servers = "servers"
+    Users = "users"
+    Time = "total_time"
+    SongCount = "song_count"
+    Request = "requests"
+
+
+def _increment(data: dict, uid: int, name: DataType):
     user_data = data.setdefault(str(uid), {})
     user_data[name] = user_data.get(name, 0) + 1
 
@@ -15,7 +24,7 @@ def _increment(data: dict, uid: int, name: str):
 def _stop_timer(data: dict, uid: int, playing_start: int):
     guild_data = data.setdefault(str(uid), {})
     elapsed = int(time.time() - playing_start)
-    guild_data["total_time"] = guild_data.get("total_time", 0) + elapsed
+    guild_data[DataType.Time] = guild_data.get(DataType.Time, 0) + elapsed
 
 
 class _ListeningUserData(NamedTuple):
@@ -47,7 +56,7 @@ class _UsersData:
         """Use the server one"""
         for user_id, data in self.listening_start.items():
             if data and data.guild_id == guild_id:
-                _increment(self.data, user_id, "song_count")
+                _increment(self.data, user_id, DataType.SongCount)
 
     def _server_stopped_playing(self, guild_id: int):
         for user_id, data in self.listening_start.items():
@@ -64,6 +73,33 @@ class _UsersData:
     def get_user_data(self, user_id: int) -> dict | None:
         self.cache_listening_time(user_id)
         return self.data.get(str(user_id))
+
+    def get_top(self, top_n: int, comparison: DataType) -> dict[int, list[int, int]]:
+        best = [0] * top_n
+        for user_id, data in self.data.items():
+            self.cache_listening_time(user_id)
+            if data:
+                cmp = data.get(comparison, 0)
+                if cmp != 0:
+                    for idx in range(len(best)):
+                        if cmp == best[idx]:
+                            break
+                        if cmp > best[idx]:
+                            best.insert(idx, cmp)
+                            best.pop()
+                            break
+
+        results = {}
+        for user_id, data in self.data.items():
+            if data:
+                cmp = data.get(comparison, 0)
+                if cmp != 0:
+                    for idx in range(len(best)):
+                        if cmp == best[idx]:
+                            place: list = results.setdefault(idx, [])
+                            place.append((user_id, cmp))
+
+        return results
 
 
 class _ServersData:
@@ -88,7 +124,7 @@ class _ServersData:
         self.playing_start[guild_id] = None
 
     def song_count_increment(self, guild_id: int):
-        _increment(self.data, guild_id, "song_count")
+        _increment(self.data, guild_id, DataType.SongCount)
         users._song_count_increment(guild_id)
 
     def get_server_data(self, guild_id: int) -> dict | None:
@@ -130,5 +166,5 @@ def save():
 
 
 def song_requested(guild_id: int, requested_by_id: int):
-    _increment(_data["servers"], guild_id, "requests")
-    _increment(_data["users"], requested_by_id, "requests")
+    _increment(_data["servers"], guild_id, DataType.Request)
+    _increment(_data["users"], requested_by_id, DataType.Request)
