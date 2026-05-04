@@ -74,10 +74,10 @@ class _UsersData:
         self.cache_listening_time(user_id)
         return self.data.get(str(user_id))
 
-    def get_top(self, top_n: int, comparison: DataType) -> dict[int, list[int, int]]:
+    def get_top(self, top_n: int, comparison: DataType) -> dict[int, list[str, int]]:
         best = [0] * top_n
         for user_id, data in self.data.items():
-            self.cache_listening_time(user_id)
+            self.cache_listening_time(int(user_id))
             if data:
                 cmp = data.get(comparison, 0)
                 if cmp != 0:
