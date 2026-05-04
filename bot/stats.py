@@ -46,12 +46,12 @@ class _UsersData:
     def _song_count_increment(self, guild_id: int):
         """Use the server one"""
         for user_id, data in self.listening_start.items():
-            if data.guild_id == guild_id:
+            if data and data.guild_id == guild_id:
                 _increment(self.data, user_id, "song_count")
 
     def _server_stopped_playing(self, guild_id: int):
         for user_id, data in self.listening_start.items():
-            if data.guild_id == guild_id:
+            if data and data.guild_id == guild_id:
                 self.stopped_listening(user_id)
 
     def cache_listening_time(self, user_id: int):
@@ -126,6 +126,7 @@ def save():
 
     with open(_stats_filename, "w") as f:
         json.dump(_data, f, indent=4)
+    _log.info("Successfully saved stats")
 
 
 def song_requested(guild_id: int, requested_by_id: int):
