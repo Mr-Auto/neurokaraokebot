@@ -150,9 +150,18 @@ class MusicCog(commands.Cog):
                 await ctx.channel.edit(status=mp.current_song.song_name())
 
     @commands.command()
-    @cmd_verify()
     async def reconnect(self, ctx: commands.Context):
         """Reset the bot and reconnect to this VC (kills the queue)"""
+        if not ctx.voice_client:
+            await ctx.reply(
+                "Bot not running, use !karaokehere to invite it to VC. Command allowed only in VC",
+                delete_after=5,
+            )
+            return
+        if ctx.channel.id != ctx.voice_client.channel.id:
+            await ctx.reply("You can only use this command in VC with the bot", delete_after=5)
+            return
+
         mp = self.get_music_player(ctx)
         self.music_players[ctx.guild.id] = None
         if mp:
@@ -667,7 +676,7 @@ class MusicCog(commands.Cog):
                     await asyncio.sleep(0.2)
                     mp.resume()
                     stats.servers.started_playing(guild_id)
-                    for user in after.channel.members:
+                    for user in before.channel.members:
                         if (
                             user.id != self.bot.user.id
                             and not user.voice.deaf
