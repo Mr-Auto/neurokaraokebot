@@ -399,22 +399,6 @@ class MusicCog(commands.Cog):
         if view:
             view.message = message
 
-    @commands.command(priority=7)
-    @cmd_verify()
-    async def updatestatus(self, ctx: commands.Context, update: bool):
-        """Disable/enable bot updating VC status with song name"""
-        if self.updatestatus != update:
-            if update:
-                await ctx.reply(f"Status updates back ON {EMOTES.OK}")
-                mp = self.get_music_player(ctx)
-                song_name = mp.current_song.song_name()
-                if mp.is_paused():
-                    song_name = f"{EMOTES.PAUSE} {song_name}"
-                await ctx.channel.edit(status=song_name)
-            else:
-                await ctx.reply(f"Status updates OFF {EMOTES.NWELIV}")
-        self.updatestatus = update
-
     @commands.command(aliases=("fs",))
     @cmd_verify(True)
     async def findsong(self, ctx: commands.Context, *, search_string: str):
@@ -441,23 +425,6 @@ class MusicCog(commands.Cog):
         request_allowed = ctx.voice_client and ctx.voice_client.channel.id == ctx.channel.id
         view = SongLookupView(result_list, request_allowed, ctx.author.id)
         view.message = await ctx.reply(view=view)
-
-    @commands.command(hidden=True)
-    @commands.is_owner()
-    async def mode(self, ctx: commands.Context, mode: str = None):
-        if mode:
-            if mode.lower() == "lazy":
-                player.MODE = 1
-            elif mode.lower() == "eager":
-                player.MODE = 2
-            else:
-                await ctx.reply(f"Wrong option [lazy or eager] {EMOTES.SILLY}")
-                return
-
-        if player.MODE == 1:
-            await ctx.reply(f"Current mode: `LazyPCMSource(pedalboard)` {EMOTES.LOADING}")
-        else:
-            await ctx.reply(f"Current mode: `EagerPCMSource(ffmpeg)` {EMOTES.PAUSE}")
 
     @commands.command(aliases=("playlists", "pl"))
     @cmd_verify()
@@ -571,7 +538,7 @@ class MusicCog(commands.Cog):
             log.error(mp.current_song.dump_json())
             self.playback_end(vc, None)
         else:
-            if self.updatestatus:
+            if mp.update_status:
                 song_name = mp.current_song.song_name()
                 if start_paused:
                     song_name = f"{EMOTES.PAUSE} {song_name}"

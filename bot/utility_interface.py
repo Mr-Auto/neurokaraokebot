@@ -7,6 +7,7 @@ import asyncio
 from discord.ext import commands
 
 import stats
+import player
 from music_interface import cmd_verify
 from config import EMOTES
 
@@ -187,6 +188,40 @@ class UtilityCog(commands.Cog):
             await ctx.reply(embed=embed)
         else:
             await ctx.reply(f"Unknown user `{option}` {EMOTES.SIDE_EYE}")
+
+    @commands.command(hidden=True)
+    @commands.is_owner()
+    async def mode(self, ctx: commands.Context, mode: str = None):
+        if mode:
+            if mode.lower() == "lazy":
+                player.MODE = 1
+            elif mode.lower() == "eager":
+                player.MODE = 2
+            else:
+                await ctx.reply(f"Wrong option [lazy or eager] {EMOTES.SILLY}")
+                return
+
+        if player.MODE == 1:
+            await ctx.reply(f"Current mode: `LazyPCMSource(pedalboard)` {EMOTES.LOADING}")
+        else:
+            await ctx.reply(f"Current mode: `EagerPCMSource(ffmpeg)` {EMOTES.PAUSE}")
+
+    @commands.command(priority=7)
+    @cmd_verify()
+    async def updatestatus(self, ctx: commands.Context, update: bool):
+        """Disable/enable bot updating VC status with song name"""
+        music_players = ctx.bot.get_cog("MusicCog").music_players
+        mp = music_players.get(ctx.guild.id)
+        if mp.update_status != update:
+            if update:
+                await ctx.reply(f"Status updates back ON {EMOTES.OK}")
+                song_name = mp.current_song.song_name()
+                if mp.is_paused():
+                    song_name = f"{EMOTES.PAUSE} {song_name}"
+                await ctx.channel.edit(status=song_name)
+            else:
+                await ctx.reply(f"Status updates OFF {EMOTES.NWELIV}")
+        mp.update_status = update
 
     @commands.command(hidden=True)
     @commands.is_owner()
