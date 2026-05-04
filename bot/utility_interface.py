@@ -170,16 +170,19 @@ class UtilityCog(commands.Cog):
                     await ctx.reply(f"Unknown statistic, use: [time, songs, requests]")
                     return
 
-            top = stats.users.get_top(5, top_comparison)
+
+            top_n = 5
+            top = stats.users.get_top(top_n, top_comparison)
             leaderboard_text = ""
-            for rank, users in top.items():
+            for idx in range(top_n):
+                users = top.get(idx)
                 if not users:
                     continue
 
                 for user_id, score in users:
                     if top_comparison == stats.DataType.Time:
                         score = format_time_string(score)
-                    leaderboard_text += f"{rank+1}. <@{user_id}>: {score}\n"
+                    leaderboard_text += f"{idx+1}. <@{user_id}>: {score}\n"
 
             title = top_comparison.capitalize().replace("_", " ")
             embed = discord.Embed(title=f"🏆 Top by {title} 🏆", description=leaderboard_text)
