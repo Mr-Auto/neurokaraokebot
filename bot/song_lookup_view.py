@@ -219,6 +219,8 @@ class SetlistButton(ui.Button):
             )
             stats.song_requested(interact.guild_id, interact.user.id)
         else:
+            if hasattr(self.view, "message"):
+                self.view.message = None
             new_view = SongLookupView(plylist_data, True, self.owner_id, json_result.get("name"))
             new_view.message = interact.message
             await interact.response.edit_message(view=new_view)
