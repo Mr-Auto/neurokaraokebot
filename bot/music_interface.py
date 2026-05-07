@@ -11,7 +11,6 @@ import datetime
 from itertools import chain, islice
 
 import player
-import stats
 from config import *
 from song_lookup_view import SongLookupView, RequestButton, SetlistsView
 
@@ -125,7 +124,6 @@ class MusicCog(commands.Cog):
         vc = ctx.voice_client
         mp = self.get_music_player(ctx)
         mp.pause()
-        stats.servers.stopped_playing(ctx.guild.id)
         if vc.is_playing():
             vc.pause()
             await ctx.reply(f"Paused ⏸️ {EMOTES.PAUSE}")
@@ -139,10 +137,6 @@ class MusicCog(commands.Cog):
         vc = ctx.voice_client
         mp = self.get_music_player(ctx)
         mp.resume()
-        stats.servers.started_playing(ctx.guild.id)
-        for user in ctx.channel.members:
-            if user.id != self.bot.user.id and not user.voice.deaf and not user.voice.self_deaf:
-                stats.users.started_listening(user.id, ctx.guild.id)
         if vc.is_paused():
             vc.resume()
             await ctx.reply(f"Resumed ▶️ {EMOTES.JAM}")
@@ -167,7 +161,6 @@ class MusicCog(commands.Cog):
         if mp:
             mp.pause()
 
-        stats.servers.stopped_playing(ctx.guild.id)
         vc = ctx.voice_client
         channel = vc.channel
         await ctx.reply(f"Rebooting voice connection... {EMOTES.LOADING}")
@@ -368,7 +361,6 @@ class MusicCog(commands.Cog):
                 playing_in_str = f"`Unknown` {EMOTES.SILLY}"
 
         position, song = mp.request_song(result_list[0], ctx.author.name)
-        stats.song_requested(ctx.guild.id, ctx.author.id)
         await ctx.reply(
             f"Added `{song.song_name()}` at position {position} in the queue\nPlaying {playing_in_str}"
         )
@@ -502,10 +494,6 @@ class MusicCog(commands.Cog):
         remaining = max(0, 3 - (time.perf_counter() - start_wait))
         await asyncio.sleep(remaining)
         await self.play_current(vc)
-        stats.servers.started_playing(ctx.guild.id)
-        for user in vc.channel.members:
-            if user.id != self.bot.user.id and not user.voice.deaf and not user.voice.self_deaf:
-                stats.users.started_listening(user.id, ctx.guild.id)
 
         await ctx.send(f"Now playing `{song_name}` {EMOTES.JAM}")
         log.info(f"start: Starting karaoke in: ({ctx.guild.name} / {ctx.channel.name})")
@@ -523,10 +511,9 @@ class MusicCog(commands.Cog):
                 log.error(
                     f"play_current: could not download the song: {mp.current_song.dump_json()}"
                 )
-                self.playback_end(vc, "error")
+                self.playback_end(vc, None)
                 return
 
-        mp.apply_effects_board()
         try:
             log.info(f"play_current: Starting playback '{mp.current_song.song_name()}'")
             vc.play(
@@ -554,21 +541,17 @@ class MusicCog(commands.Cog):
                 await vc.channel.edit(status=song_name)
 
     def playback_end(self, vc: discord.VoiceClient, error):
-        if error and not isinstance(error, str):
+        if error:
             log.error(f"Error during playback: {error}", exc_info=error)
 
-        fut = asyncio.run_coroutine_threadsafe(
-            self.next_song(vc.guild.id, error is None), self.bot.loop
-        )
+        fut = asyncio.run_coroutine_threadsafe(self.next_song(vc.guild.id), self.bot.loop)
         fut.result()
 
-    async def next_song(self, guild_id: int, success: bool):
+    async def next_song(self, guild_id: int):
         guild = self.bot.get_guild(guild_id)
         if not guild:
             log.error(f"next_song: could not get guild (ID: {guild_id})")
             return
-        if success:
-            stats.servers.song_count_increment(guild_id)
         log.info(f"next_song: attempt, server: {guild.name}[{guild_id}]")
         vc = guild.voice_client
         mp = self.music_players.get(guild_id)
@@ -661,7 +644,6 @@ class MusicCog(commands.Cog):
                     return
                 was_paused = mp.is_paused()
                 mp.pause()
-                stats.servers.stopped_playing(guild_id)
                 log.warning("Detected active playback, attempting to resume")
                 await asyncio.sleep(1)
                 vc = await before.channel.connect(reconnect=False)
@@ -675,28 +657,9 @@ class MusicCog(commands.Cog):
                     # wait a little before resuming
                     await asyncio.sleep(0.2)
                     mp.resume()
-                    stats.servers.started_playing(guild_id)
-                    for user in before.channel.members:
-                        if (
-                            user.id != self.bot.user.id
-                            and not user.voice.deaf
-                            and not user.voice.self_deaf
-                        ):
-                            stats.users.started_listening(user.id, guild_id)
 
             elif before.channel is None and after.channel is not None:
                 log.info(f"Connected to voice channel: {after.channel}[{after.channel.id}]")
-            elif before.channel != after.channel:
-                for user in before.channel.members:
-                    if user.id != self.bot.user.id:
-                        stats.users.stopped_listening(user.id)
-                for user in after.channel.members:
-                    if (
-                        user.id != self.bot.user.id
-                        and not user.voice.deaf
-                        and not user.voice.self_deaf
-                    ):
-                        stats.users.started_listening(user.id, after.channel.guild.id)
             elif before.mute != after.mute:
                 guild_id = before.channel.guild.id
                 mp = self.music_players.get(guild_id)
@@ -704,39 +667,15 @@ class MusicCog(commands.Cog):
                     return
                 if after.mute:
                     mp.pause()
-                    stats.servers.stopped_playing(guild_id)
                     await after.channel.send(f"🔇 {EMOTES.SAD}")
                 else:
                     await after.channel.send(f"🔊 {EMOTES.HAPPY}")
                     mp.resume()
-                    stats.servers.started_playing(guild_id)
-                    for user in before.channel.members:
-                        if (
-                            user.id != self.bot.user.id
-                            and not user.voice.deaf
-                            and not user.voice.self_deaf
-                        ):
-                            stats.users.started_listening(user.id, guild_id)
         else:
             vc = member.guild.voice_client
             if not vc:
                 return
             mp = self.music_players.get(member.guild.id)
-            if mp and not mp.is_paused() and before.channel != after.channel:
-                if before.channel == vc.channel:
-                    stats.users.stopped_listening(member.id)
-                elif (
-                    after.channel == vc.channel
-                    and not member.voice.deaf
-                    and not member.voice.self_deaf
-                ):
-                    stats.users.started_listening(member.id, after.channel.guild.id)
-
-            if before.deaf != after.deaf or before.self_deaf != after.self_deaf:
-                if after.deaf or after.self_deaf:
-                    stats.users.stopped_listening(member.id)
-                elif before.deaf or before.self_deaf:
-                    stats.users.started_listening(member.id, after.channel.guild.id)
 
             if after.channel is not None:
                 if mp and vc.channel.id == after.channel.id:
@@ -760,7 +699,6 @@ class MusicCog(commands.Cog):
                 if mp.alone_counter > PAUSE_AFTER:
                     vc.pause()
                     mp.pause()
-                    stats.servers.stopped_playing(guild.id)
                     if mp.update_status:
                         status = f"{EMOTES.PAUSE} {mp.current_song.song_name()}"
                         await vc.channel.edit(status=status)

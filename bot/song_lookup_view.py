@@ -6,7 +6,6 @@ from discord import ui
 from enum import Enum, auto
 from datetime import datetime
 
-import stats
 from player import MusicPlayer, Song
 from config import EMOTES, PLAYLIST_URL, PLAYLIST_API
 
@@ -47,7 +46,6 @@ class RequestButton(ui.Button):
                 playing_in_str = f"<t:{playing_in}:R>"
 
         position, song = mp.request_song(self.song_data, interact.user.name)
-        stats.song_requested(interact.guild_id, interact.user.id)
         await interact.channel.send(
             f"{interact.user.mention} requested: `{song.song_name()}`\nAdded to the queue at position {position}, playing {playing_in_str}"
         )
@@ -217,7 +215,6 @@ class SetlistButton(ui.Button):
             await interact.channel.send(
                 f"{interact.user.mention} requested: `{song_nr} songs`\nFrom {self.data['name']}"
             )
-            stats.song_requested(interact.guild_id, interact.user.id)
         else:
             if hasattr(self.view, "message"):
                 self.view.message = None

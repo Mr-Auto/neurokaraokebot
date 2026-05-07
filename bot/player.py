@@ -8,6 +8,7 @@ import requests
 import json
 import time
 import pedalboard
+import av
 from typing import TypeVar
 from pedalboard.io import AudioFile
 from collections import deque
@@ -15,7 +16,7 @@ from itertools import chain, islice
 from config import *
 
 # TODO fix deque mutated during iteration // maybe fixed?
-# keep in mind the forced feill, probably need to lock it for that
+# keep in mind the forced reill, probably need to lock it for that
 T = TypeVar("T")
 log = logging.getLogger()
 MODE = 1
@@ -57,7 +58,6 @@ class PCMSource(discord.AudioSource):
 
     def __init__(self):
         self.paused = False
-        self.effects_board = pedalboard.Pedalboard()
 
     def is_opus(self):
         return False
@@ -86,6 +86,56 @@ class PCMSource(discord.AudioSource):
 
     def close(self):
         raise NotImplementedError
+
+
+class OpusAudioSource(PCMSource):
+    SILENCE_FRAME = b"\xf8\xff\xfe"
+
+    def __init__(self, url: str):
+        self.container = av.open(url)
+        self.stream = self.container.streams.audio[0]
+        self.packet_generator = self.container.demux(self.stream)
+        super().__init__()
+
+    def set_pause(self, pause: bool):
+        if pause and not self.paused:
+            log.info("PCMSource: Playback Paused")
+        elif not pause and self.paused:
+            log.info("PCMSource: Playback Resumed")
+        self.paused = pause
+
+    def read(self) -> bytes:
+        if self.paused:
+            return self.SILENCE_FRAME
+
+        try:
+            packet = next(self.packet_generator)
+            return bytes(packet)
+        except StopIteration:
+            pass
+
+        return b""
+
+    def is_opus(self) -> bool:
+        return True
+
+    def duration(self) -> int:
+        raise NotImplementedError
+
+    def size(self) -> int:
+        raise NotImplementedError
+
+    def remaining(self) -> int:
+        raise NotImplementedError
+
+    def seek(self, seconds: float):
+        raise NotImplementedError
+
+    def playback_speed(self, speed: float):
+        raise NotImplementedError
+
+    def close(self):
+        self.container.close()
 
 
 class LazyPCMSource(PCMSource):
@@ -155,10 +205,9 @@ class LazyPCMSource(PCMSource):
         if chunk.shape[0] == 1:
             chunk = numpy.repeat(chunk, 2, axis=0)
 
-        processed_audio = self.effects_board(chunk, self.SAMPLE_RATE, reset=False)
-        processed_audio *= 32767.0
-        numpy.clip(processed_audio, -32768, 32767, out=processed_audio)
-        pcm_chunk = processed_audio.astype(numpy.int16).T.tobytes()
+        chunk *= 32767.0
+        numpy.clip(chunk, -32768, 32767, out=chunk)
+        pcm_chunk = chunk.astype(numpy.int16).T.tobytes()
         chunk_size = len(pcm_chunk)
         if chunk_size < self.BYTES_PER_20MS:
             padding = self.BYTES_PER_20MS - chunk_size
@@ -238,14 +287,6 @@ class EagerPCMSource(PCMSource):
             # ends playback
             return b""
 
-        if self.effects_board:
-            audio_data = numpy.frombuffer(chunk, dtype=numpy.int16).reshape(-1, 2).T
-            audio_float = audio_data.astype(numpy.float32) / 32768.0
-            processed_audio = self.effects_board(audio_float, self.SAMPLE_RATE, reset=False)
-            processed_audio *= 32767.0
-            numpy.clip(processed_audio, -32768, 32767, out=processed_audio)
-            chunk = processed_audio.astype(numpy.int16).T.tobytes()
-
         chunk_size = len(chunk)
         if chunk_size < self.BYTES_PER_20MS:
             padding = self.BYTES_PER_20MS - chunk_size
@@ -301,9 +342,16 @@ class Song:
         return self.playback.remaining() if self.has_playback() else None
 
     def download(self):
-        song_url = STORAGE_URL + self.song_info["absolutePath"].strip("/")
+        opus = self.song_info.get("opus")
+        if opus:
+            song_url = STORAGE_URL + self.song_info["opus"].strip("/")
+        else:
+            song_url = STORAGE_URL + self.song_info["absolutePath"].strip("/")
         extension = song_url.rsplit(".", 1)[-1].lower()
-        if MODE == 1:
+
+        if opus:
+            self.playback = OpusAudioSource(song_url)
+        elif MODE == 1:
             pre_process = extension not in ["mp3", "flac", "aiff", "ogg", "wav"]
             self.playback = LazyPCMSource(song_url, pre_process)
         else:
@@ -338,7 +386,6 @@ class MusicPlayer:
     def __init__(self):
         self.cache = deque()
         self.requests_cache = deque()
-        self.effects_board = pedalboard.Pedalboard()
         self.alone_counter = 0
         self.update_status = True
         self.refill_task: asyncio.Future = None
@@ -426,53 +473,6 @@ class MusicPlayer:
 
     def is_paused(self) -> bool:
         return self.current_song.has_playback() and self.current_song.playback.paused
-
-    def clear_modifiers(self):
-        self.effects_board = pedalboard.Pedalboard()
-        self.apply_effects_board()
-
-    def get_pedalboard_effect(self, plugin_type: T) -> T | None:
-        if plugin_type is None:
-            return None
-
-        for effect in self.effects_board:
-            if isinstance(effect, plugin_type):
-                return effect
-
-        new_effect = plugin_type()
-        self.effects_board.append(new_effect)
-        self.fix_limiter()
-        return new_effect
-
-    def remove_pedalboard_effect(self, plugin_type: T) -> T:
-        if plugin_type is None or len(self.effects_board) == 0:
-            return
-        target_plugin = next((x for x in self.effects_board if isinstance(x, plugin_type)), None)
-        if target_plugin is None:
-            return
-        self.effects_board.remove(target_plugin)
-        self.fix_limiter()
-
-    def fix_limiter(self):
-        if len(self.effects_board) == 0:
-            return
-        board = self.effects_board
-        if board and isinstance(board[-1], pedalboard.Limiter):
-            return
-            # if len(board) == 1:
-            #     self.effects_board = pedalboard.Pedalboard()
-            #     self.apply_effects_board()
-            # return
-
-        target_plugin = next((x for x in board if isinstance(x, pedalboard.Limiter)), None)
-        if target_plugin is not None:
-            board.remove(target_plugin)
-            # if len(self.effects_board) != 0:
-            board.append(target_plugin)
-
-    def apply_effects_board(self):
-        if self.current_song.has_playback():
-            self.current_song.playback.effects_board = self.effects_board
 
     # used for single song request, setlist request have separate logic
     def request_song(self, song_data: dict, requested_by: str):

@@ -4,3 +4,4 @@ numpy
 pedalboard
 python-dotenv
 ffmpeg
+av
