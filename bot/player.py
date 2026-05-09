@@ -1,3 +1,4 @@
+import threading
 import discord
 import io
 import subprocess
@@ -88,54 +89,131 @@ class PCMSource(discord.AudioSource):
         raise NotImplementedError
 
 
-class OpusAudioSource(PCMSource):
+class OpusAudioSource(discord.AudioSource):
     SILENCE_FRAME = b"\xf8\xff\xfe"
+    BUFFER_SIZE = 200
 
     def __init__(self, url: str):
+        self.url = url
+        self.current_pts = 0
+        self.paused = False
         self.container = av.open(url)
         self.stream = self.container.streams.audio[0]
         self.packet_generator = self.container.demux(self.stream)
-        super().__init__()
+        self.buffer = deque()
+        self.end = False
+        self._lock = threading.Lock()
+        try:
+            for _ in range(self.BUFFER_SIZE):
+                self.buffer.append(next(self.packet_generator))
+        except:
+            pass  # we like playing it dangerously :)
 
     def set_pause(self, pause: bool):
         if pause and not self.paused:
-            log.info("PCMSource: Playback Paused")
+            log.info("OpusAudioSource: Playback Paused")
         elif not pause and self.paused:
-            log.info("PCMSource: Playback Resumed")
+            log.info("OpusAudioSource: Playback Resumed")
         self.paused = pause
 
     def read(self) -> bytes:
         if self.paused:
             return self.SILENCE_FRAME
 
-        try:
-            packet = next(self.packet_generator)
-            return bytes(packet)
-        except StopIteration:
-            pass
+        if self.container and not self.end:
+            try:
+                new_packet = next(self.packet_generator)
+                self.buffer.append(new_packet)
+            except av.error.OSError as e:
+                log.warning("OpusAudioSource: lost connection, attempting reconnect")
+                self.container.close()
+                self.container = None
+                self._reconnect()
+            except (StopIteration, EOFError):
+                self.end = True
 
-        return b""
+        if self.buffer:
+            packet = self.buffer.popleft()
+            if packet.pts is not None:
+                self.current_pts = packet.pts
+            return bytes(packet)
+
+        if self.end:
+            return b""
+        else:
+            # log.warning("reconnect happening, sending silence")
+            return self.SILENCE_FRAME
+
+    def _reconnect(self):
+        seek_to = 0
+        if self.buffer:
+            last_packet = self.buffer[-1]
+            if last_packet.pts:
+                seek_to = last_packet.pts
+            else:
+                seek_to = self.current_pts
+        else:
+            seek_to = self.current_pts
+
+        def target():
+            with self._lock:
+                try:
+                    container = av.open(self.url, options={"timeout": "2000000"})  # 2s timeout
+                    self.stream = container.streams.audio[0]
+                    self.packet_generator = container.demux(self.stream)
+                    container.seek(seek_to, stream=self.stream)
+                    next(self.packet_generator)  # already have this one
+                    try:
+                        for _ in range(self.BUFFER_SIZE):
+                            self.buffer.append(next(self.packet_generator))
+                    except (StopIteration, EOFError):
+                        self.end = True
+                    log.info("OpusAudioSource: Connection established/recovered.")
+                    self.container = container
+                except Exception as e:
+                    log.error(f"OpusAudioSource: Failed to re-connect: {e}")
+                    if container:
+                        container.close()
+                    self.end = True
+
+        threading.Thread(target=target, daemon=True).start()
 
     def is_opus(self) -> bool:
         return True
 
     def duration(self) -> int:
-        raise NotImplementedError
+        with self._lock:
+            return self.stream.duration()
 
     def size(self) -> int:
-        raise NotImplementedError
+        with self._lock:
+            return self.container.size()
 
     def remaining(self) -> int:
-        raise NotImplementedError
+        with self._lock:
+            if self.stream.time_base is None:
+                return None
+
+            total_duration = self.stream.duration
+            if total_duration is None:
+                return 0
+
+            remaining_units = max(0, total_duration - self.current_pts)
+            return int(remaining_units * self.stream.time_base)
 
     def seek(self, seconds: float):
-        raise NotImplementedError
+        with self._lock:
+            timestamp = int(seconds / self.stream.time_base)
+            self.container.seek(timestamp, stream=self.stream)
+            self.packet_generator = self.container.demux(self.stream)
 
     def playback_speed(self, speed: float):
         raise NotImplementedError
 
     def close(self):
-        self.container.close()
+        with self._lock:
+            if self.container:
+                self.container.close()
 
 
 class LazyPCMSource(PCMSource):
@@ -346,6 +424,7 @@ class Song:
         if opus:
             song_url = STORAGE_URL + self.song_info["opus"].strip("/")
         else:
+            log.warning(f"Song '{self.get_id()}' is missing opus!")
             song_url = STORAGE_URL + self.song_info["absolutePath"].strip("/")
         extension = song_url.rsplit(".", 1)[-1].lower()
 
