@@ -97,7 +97,7 @@ class OpusAudioSource(discord.AudioSource):
         self.url = url
         self.current_pts = 0
         self.paused = False
-        self.container = av.open(url)
+        self.container = av.open(url, options={"timeout": "2000000"})
         self.stream = self.container.streams.audio[0]
         self.packet_generator = self.container.demux(self.stream)
         self.buffer = deque()
@@ -141,7 +141,6 @@ class OpusAudioSource(discord.AudioSource):
         if self.end:
             return b""
         else:
-            # log.warning("reconnect happening, sending silence")
             return self.SILENCE_FRAME
 
     def _reconnect(self):
@@ -151,8 +150,10 @@ class OpusAudioSource(discord.AudioSource):
             if last_packet.pts:
                 seek_to = last_packet.pts
             else:
+                log.warning(f"OpusAudioSource: last packet wrong? {last_packet.pts}")
                 seek_to = self.current_pts
         else:
+            log.warning("OpusAudioSource: no buffer?")
             seek_to = self.current_pts
 
         def target():
@@ -162,12 +163,14 @@ class OpusAudioSource(discord.AudioSource):
                     self.stream = container.streams.audio[0]
                     self.packet_generator = container.demux(self.stream)
                     container.seek(seek_to, stream=self.stream)
-                    next(self.packet_generator)  # already have this one
-                    try:
-                        for _ in range(self.BUFFER_SIZE):
-                            self.buffer.append(next(self.packet_generator))
-                    except (StopIteration, EOFError):
-                        self.end = True
+                    packet_num = self.BUFFER_SIZE
+                    for packet in self.packet_generator:
+                        if packet.pts is not None and packet.pts > seek_to:
+                            self.buffer.append(packet)
+                            packet_num -= 1
+                            if packet_num <= 0:
+                                break
+
                     log.info("OpusAudioSource: Connection established/recovered.")
                     self.container = container
                 except Exception as e:
