@@ -183,11 +183,11 @@ class OpusAudioSource(discord.AudioSource):
 
     def duration(self) -> int:
         with self._lock:
-            return self.stream.duration()
+            return self.stream.duration
 
     def size(self) -> int:
         with self._lock:
-            return self.container.size()
+            return self.container.size
 
     def remaining(self) -> int:
         with self._lock:
