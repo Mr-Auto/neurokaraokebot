@@ -111,9 +111,9 @@ class MusicCog(commands.Cog):
             await ctx.reply(f"Can't play audio in '{ctx.channel.type}' channel! {EMOTES.SAD}")
             return
         channel = ctx.channel
-        await channel.connect(reconnect=False)
-        await ctx.reply(f"Starting Neuro Karaoke Playback in '{channel}' {EMOTES.HAPPY}")
         try:
+            await channel.connect(reconnect=False)
+            await ctx.reply(f"Starting Neuro Karaoke Playback in '{channel}' {EMOTES.HAPPY}")
             await self.start(ctx)
         except:
             await ctx.reply(f"Something went wrong {EMOTES.SILLY}")
@@ -444,7 +444,7 @@ class MusicCog(commands.Cog):
             await ctx.reply(f"Invalid playlist link or id {EMOTES.SILLY}")
             return
 
-        response = requests.get(PLAYLIST_API + playlist_id, headers={"x-guest-id": "67"})
+        response = requests.get(PLAYLIST_API + playlist_id, headers={"x-guest-id": "67"}, timeout=8)
         if response.status_code != 200:
             await ctx.reply(
                 f"Something went wrong, status code: `{response.status_code}` {EMOTES.SILLY}"
@@ -465,7 +465,7 @@ class MusicCog(commands.Cog):
     @cmd_verify()
     async def setlist(self, ctx: commands.Context):
         """Show all avaible karaoke setlists, allows opening them and songs request"""
-        response = requests.get(SETLISTS_API)
+        response = requests.get(SETLISTS_API, timeout=8)
         if response.status_code != 200:
             await ctx.reply(
                 f"Something went wrong, status code: `{response.status_code}` {EMOTES.SILLY}"

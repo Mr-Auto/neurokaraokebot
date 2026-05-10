@@ -96,17 +96,13 @@ class OpusAudioSource(discord.AudioSource):
         self.url = url
         self.current_pts = 0
         self.paused = False
-        self.container = av.open(url, options={"timeout": "2000000"})
+        self.container = av.open(url, options={"timeout": "5000000"})  # 5s
         self.stream = self.container.streams.audio[0]
         self.packet_generator = self.container.demux(self.stream)
         self.buffer = deque()
         self.end = False
         self._lock = threading.Lock()
-        try:
-            for _ in range(self.BUFFER_SIZE):
-                self.buffer.append(next(self.packet_generator))
-        except:
-            pass  # we like playing it dangerously :)
+        self.buffer.extend(islice(self.packet_generator, self.BUFFER_SIZE))
 
     def set_pause(self, pause: bool):
         if pause and not self.paused:
@@ -124,7 +120,7 @@ class OpusAudioSource(discord.AudioSource):
                 new_packet = next(self.packet_generator)
                 self.buffer.append(new_packet)
             except av.error.OSError as e:
-                log.warning("OpusAudioSource: lost connection, attempting reconnect")
+                log.info("OpusAudioSource: lost connection, attempting reconnect")
                 self.container.close()
                 self.container = None
                 self._reconnect()
@@ -158,25 +154,23 @@ class OpusAudioSource(discord.AudioSource):
         def target():
             with self._lock:
                 try:
-                    container = av.open(self.url, options={"timeout": "2000000"})  # 2s timeout
+                    container = av.open(self.url, options={"timeout": "3000000"})  # 3s
                     self.stream = container.streams.audio[0]
                     self.packet_generator = container.demux(self.stream)
                     container.seek(seek_to, stream=self.stream)
-                    packet_num = self.BUFFER_SIZE
                     for packet in self.packet_generator:
                         if packet.pts is not None and packet.pts > seek_to:
                             self.buffer.append(packet)
-                            packet_num -= 1
-                            if packet_num <= 0:
+                            if len(self.buffer) >= self.BUFFER_SIZE:
                                 break
 
                     log.info("OpusAudioSource: Connection established/recovered.")
                     self.container = container
                 except Exception as e:
                     log.error(f"OpusAudioSource: Failed to re-connect: {e}")
+                    self.end = True
                     if container:
                         container.close()
-                    self.end = True
 
         threading.Thread(target=target, daemon=True).start()
 
@@ -185,7 +179,7 @@ class OpusAudioSource(discord.AudioSource):
 
     def duration(self) -> int:
         with self._lock:
-            return self.stream.duration
+            return int(self.stream.duration * self.stream.time_base)
 
     def size(self) -> int:
         with self._lock:
@@ -243,14 +237,18 @@ class LazyPCMSource(PCMSource):
             ]
             process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             file_data, ffmpeg_log = process.communicate()
-            if ffmpeg_log and len(ffmpeg_log) != 0:
-                log.error(f"EagerPCMSource: ffmpeg returned: {ffmpeg_log.decode().strip()}")
+            if ffmpeg_log:
+                ffmpeg_log = ffmpeg_log.decode().strip()
+            if process.returncode != 0:
+                raise RuntimeError(f"LazyPCMSource: ffmpeg returned: {ffmpeg_log}")
+            if ffmpeg_log:
+                log.error(f"LazyPCMSource: ffmpeg returned: {ffmpeg_log}")
         else:
             log.info(f"LazyPCMSource: Fetching song data from '{url}'")
             retries = 4
             for i in range(retries):
                 try:
-                    response = requests.get(url)
+                    response = requests.get(url, timeout=8)
                     response.raise_for_status()
                     break
                 except (requests.exceptions.RequestException, ValueError) as e:
@@ -353,8 +351,12 @@ class EagerPCMSource(PCMSource):
         ]
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         raw_pcm_data, ffmpeg_log = process.communicate()
-        if ffmpeg_log and len(ffmpeg_log) != 0:
-            log.error(f"EagerPCMSource: ffmpeg returned: {ffmpeg_log.decode().strip()}")
+        if ffmpeg_log:
+            ffmpeg_log = ffmpeg_log.decode().strip()
+        if process.returncode != 0:
+            raise RuntimeError(f"EagerPCMSource: ffmpeg returned: {ffmpeg_log}")
+        if ffmpeg_log:
+            log.error(f"EagerPCMSource: ffmpeg returned: {ffmpeg_log}")
         self.buffer = io.BytesIO(raw_pcm_data)
         super().__init__()
 
@@ -438,17 +440,19 @@ class Song:
             log.warning(f"Song '{self.get_id()}' is missing opus!")
             song_url = STORAGE_URL + self.song_info["absolutePath"].strip("/")
         extension = song_url.rsplit(".", 1)[-1].lower()
+        try:
+            if opus:
+                self.playback = OpusAudioSource(song_url)
+        except Exception as e:
+            log.warning(str(e), exc_info=e)
+            opus = None
 
-        if opus:
-            self.playback = OpusAudioSource(song_url)
-        elif MODE == 1:
-            pre_process = extension not in ["mp3", "flac", "aiff", "ogg", "wav"]
-            self.playback = LazyPCMSource(song_url, pre_process)
-        else:
-            self.playback = EagerPCMSource(song_url)
-        if not self.has_playback():
-            log.error(f"Song.download: could not load song\n song data: {self.dump_json()}")
-            # should probably raise error
+        if not opus:
+            if MODE == 1:
+                pre_process = extension not in ["mp3", "flac", "aiff", "ogg", "wav"]
+                self.playback = LazyPCMSource(song_url, pre_process)
+            else:
+                self.playback = EagerPCMSource(song_url)
 
     def dump_json(self, indent=4) -> str:
         return json.dumps(self.song_info, indent=indent)
@@ -461,7 +465,7 @@ class Song:
             if not download_animated or self.song_info["coverArt"]["contentType"] != "image/webp":
                 return image_url
             else:
-                response = requests.get(image_url)
+                response = requests.get(image_url, timeout=5)
                 if response.status_code != 200:
                     return image_url
                 else:
@@ -541,8 +545,11 @@ class MusicPlayer:
                 continue
             to_download.append(item)
 
-        for item in to_download:
-            item.download()
+        try:
+            for item in to_download:
+                item.download()
+        except Exception as e:
+            log.error(f"refill_queue: error during song download: {e}")
 
         if len(self.cache) < MAX_CACHE + 1:
             data = fetch_json_data(RANDOM_API)
