@@ -8,14 +8,13 @@ import requests
 import json
 import time
 import pedalboard
+import av
 from typing import TypeVar
 from pedalboard.io import AudioFile
 from collections import deque
 from itertools import chain, islice
 from config import *
 
-# TODO fix deque mutated during iteration // maybe fixed?
-# keep in mind the forced feill, probably need to lock it for that
 T = TypeVar("T")
 log = logging.getLogger()
 MODE = 1
@@ -86,6 +85,56 @@ class PCMSource(discord.AudioSource):
 
     def close(self):
         raise NotImplementedError
+
+
+class OpusAudioSource(PCMSource):
+    SILENCE_FRAME = b"\xf8\xff\xfe"
+
+    def __init__(self, url: str):
+        self.container = av.open(url)
+        self.stream = self.container.streams.audio[0]
+        self.packet_generator = self.container.demux(self.stream)
+        super().__init__()
+
+    def set_pause(self, pause: bool):
+        if pause and not self.paused:
+            log.info("PCMSource: Playback Paused")
+        elif not pause and self.paused:
+            log.info("PCMSource: Playback Resumed")
+        self.paused = pause
+
+    def read(self) -> bytes:
+        if self.paused:
+            return self.SILENCE_FRAME
+
+        try:
+            packet = next(self.packet_generator)
+            return bytes(packet)
+        except StopIteration:
+            pass
+
+        return b""
+
+    def is_opus(self) -> bool:
+        return True
+
+    def duration(self) -> int:
+        raise NotImplementedError
+
+    def size(self) -> int:
+        raise NotImplementedError
+
+    def remaining(self) -> int:
+        raise NotImplementedError
+
+    def seek(self, seconds: float):
+        raise NotImplementedError
+
+    def playback_speed(self, speed: float):
+        raise NotImplementedError
+
+    def close(self):
+        self.container.close()
 
 
 class LazyPCMSource(PCMSource):
@@ -301,9 +350,16 @@ class Song:
         return self.playback.remaining() if self.has_playback() else None
 
     def download(self):
-        song_url = STORAGE_URL + self.song_info["absolutePath"].strip("/")
+        opus = self.song_info.get("opus")
+        if opus:
+            song_url = STORAGE_URL + self.song_info["opus"].strip("/")
+        else:
+            song_url = STORAGE_URL + self.song_info["absolutePath"].strip("/")
         extension = song_url.rsplit(".", 1)[-1].lower()
-        if MODE == 1:
+
+        if opus:
+            self.playback = OpusAudioSource(song_url)
+        elif MODE == 1:
             pre_process = extension not in ["mp3", "flac", "aiff", "ogg", "wav"]
             self.playback = LazyPCMSource(song_url, pre_process)
         else:
