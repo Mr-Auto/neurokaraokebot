@@ -213,10 +213,8 @@ class MusicCog(commands.Cog):
         if mp.is_paused():
             note = f"Ends `PAUSED` {EMOTES.PAUSE}"
             song_remaining = None
-        embed, discord_file = self.get_song_embed(
-            mp.current_song.song_info, note, footer, song_remaining
-        )
-        cover_str = " & ".join(mp.current_song.song_info["coverArtists"])
+        embed, discord_file = self.get_song_embed(mp.current_song, note, footer, song_remaining)
+        cover_str = mp.current_song.cover_artists
         cover_by = parse_cover_by(cover_str)
         emote_str = EMOTES.JAM
         match cover_by:
@@ -247,7 +245,7 @@ class MusicCog(commands.Cog):
         if line_end == -1 or symbol > line_end:
             return
         description_end = embed.description[line_end + 1 :]
-        duration = song.song_info["duration"]
+        duration = song.duration
         counter = 0
         while True:
             await asyncio.sleep(2)
@@ -290,8 +288,8 @@ class MusicCog(commands.Cog):
         note = f"Playing <t:{song_end}:R>"
         if mp.is_paused():
             note = f"Playing `PAUSED` {EMOTES.PAUSE}"
-        embed, discord_file = self.get_song_embed(next_song.song_info, note, footer)
-        cover_str = " & ".join(next_song.song_info["coverArtists"])
+        embed, discord_file = self.get_song_embed(next_song, note, footer)
+        cover_str = next_song.cover_artists
         cover_by = parse_cover_by(cover_str)
         emote_str = EMOTES.JAM
         match cover_by:
@@ -382,7 +380,7 @@ class MusicCog(commands.Cog):
         if not data or not isinstance(data, list) or len(data) == 0:
             await ctx.reply("Unable to fetch data from api.neurokaraoke.com")
             return
-        embed, discord_file = self.get_song_embed(data[0])
+        embed, discord_file = self.get_song_embed(player.Song(data[0]))
         vc = ctx.voice_client
         view = None
         if (
@@ -592,19 +590,19 @@ class MusicCog(commands.Cog):
 
     @staticmethod
     def get_song_embed(
-        song_info: dict,
+        song: player.Song,
         last_section: str | None = None,
         footer: str | None = None,
         remaining: int = None,
     ):
-        original_by = " & ".join(song_info["originalArtists"])
-        date = song_info.get("streamDate")
+        original_by = " & ".join(song.song_info["originalArtists"])
+        date = song.song_info.get("streamDate")
         if date:
             date = datetime.datetime.fromisoformat(date).strftime("%B %d, %Y")
-        minutes, seconds = divmod(song_info["duration"] or 0, 60)
-        song = player.Song(song_info)
+        duration = song.duration or 0
+        minutes, seconds = divmod(duration, 60)
         song_url = song.get_url()
-        cover_str = " & ".join(song_info["coverArtists"])
+        cover_str = song.cover_artists
         cover_by = parse_cover_by(cover_str)
 
         color = COLORS.EMBED_DEFAULT
@@ -618,12 +616,12 @@ class MusicCog(commands.Cog):
             case CoverBy.Evil:
                 color = COLORS.EVIL
 
-        play_count = song_info["playCount"]
+        play_count = song.song_info.get("playCount")
         song_name = song.song_name()
         description = f"Cover by {cover_str}\n\nOriginal by {original_by}\n\nStream date: {date}"
-        if remaining and song_info["duration"] and song_info["duration"] != 0:
-            pminutes, pseconds = divmod(song_info["duration"] - remaining, 60)
-            seg = (remaining * 10) // song_info["duration"]
+        if remaining and duration != 0:
+            pminutes, pseconds = divmod(duration - remaining, 60)
+            seg = (remaining * 10) // duration
             description += f"\n-# {pminutes}:{pseconds:02} {'▬'*(10-seg)}❍{'▬'*seg} {minutes}:{seconds:02}\n{play_count} plays"
         else:
             description += f"\n{minutes}:{seconds:02} {play_count} plays"

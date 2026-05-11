@@ -413,7 +413,7 @@ class Song:
     def __init__(self, json_data: dict, requested_by: str | None = None):
         if not json_data or not isinstance(json_data, dict):
             raise TypeError(f"Song: trying to create object from wrong data: {json_data}")
-        self.playback: PCMSource = None
+        self.playback: PCMSource | OpusAudioSource | None = None
         self.song_info = json_data
         self.requested_by = requested_by
 
@@ -423,11 +423,24 @@ class Song:
     def song_name(self) -> str:
         return format_song_name(self.song_info)
 
-    def get_id(self) -> str:
-        return self.song_info["id"]
+    def get_id(self) -> str | None:
+        return self.song_info.get("id")
 
-    def get_url(self) -> str:
-        return SONG_URL + self.song_info["id"]
+    def get_url(self) -> str | None:
+        if self.get_id():
+            return SONG_URL + self.get_id()
+        else:
+            return None
+
+    @property
+    def duration(self) -> int | None:
+        if self.has_playback():
+            try:
+                return self.playback.duration()
+            except:
+                pass
+
+        return self.song_info.get("duration")
 
     def remaning(self) -> int | None:
         return self.playback.remaining() if self.has_playback() else None
@@ -456,6 +469,14 @@ class Song:
 
     def dump_json(self, indent=4) -> str:
         return json.dumps(self.song_info, indent=indent)
+
+    @property
+    def cover_artists(self) -> str:
+        cover_str = ""
+        artists_list = self.song_info.get("coverArtists")
+        if artists_list:
+            cover_str = " & ".join(artists_list)
+        return cover_str
 
     def get_cover_art(self, download_animated=False) -> str | discord.File | None:
         if self.song_info.get("coverArt") and self.song_info["coverArt"].get("absolutePath"):
