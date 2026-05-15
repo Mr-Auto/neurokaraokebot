@@ -12,12 +12,15 @@ PAUSE_DURATION = 3
 RANDOM_API = "https://api.neurokaraoke.com/api/songs/random"
 STORAGE_URL = "https://storage.neurokaraoke.com/"
 SONG_URL = "https://www.evilkaraoke.com/song/"
+SONG_API = "https://api.neurokaraoke.com/api/songs/"
 SEARCH_API = "https://api.neurokaraoke.com/api/songs"
 IMAGES_URL = "https://images.neurokaraoke.com"
 COVER_ARTITS = "https://api.neurokaraoke.com/api/filters/cover-artists?page=0&pageSize=50"
 PLAYLIST_API = "https://api.neurokaraoke.com/api/playlist/"
 SETLISTS_API = "https://api.neurokaraoke.com/api/playlists?startIndex=0&pageSize=1000&search=&sortBy=&sortDescending=False&isSetlist=True&year=0"
 PLAYLIST_URL = "https://www.evilkaraoke.com/playlist/"
+RADIO21_URL = "https://radio.twinskaraoke.com/listen/neuro_21/radio.ogg"
+RADIO21_SONGDATA = "https://radio.twinskaraoke.com/api/nowplaying/neuro_21"
 
 from enum import IntEnum
 import json

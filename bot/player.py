@@ -1,3 +1,4 @@
+import enum
 import threading
 import discord
 import io
@@ -21,14 +22,6 @@ log = logging.getLogger()
 MODE = 1
 
 
-def format_song_name(json_data) -> str:
-    name = " & ".join(json_data["originalArtists"])
-    name += " - " + json_data["title"]
-    if len(json_data["coverArtists"]) != 0:
-        name += " (" + " & ".join(json_data["coverArtists"]) + ")"
-    return name
-
-
 def fetch_json_data(url: str, get=None, post=None, retries=3):
     log.info(f"featch_json_data: Fetching json data from '{url}'")
     for i in range(retries):
@@ -49,7 +42,7 @@ def fetch_json_data(url: str, get=None, post=None, retries=3):
                 log.warning("fetch_json_data: All retry attempts failed.")
 
 
-class PCMSource(discord.AudioSource):
+class PlaybackSource(discord.AudioSource):
     SAMPLE_RATE = 48000
     SAMPLES_PER_20MS = int(0.02 * SAMPLE_RATE)
     BYTES_PER_SECOND = SAMPLE_RATE * 2 * (16 // 8)  # 48KHz, 2 channels, 16bit depth
@@ -88,27 +81,37 @@ class PCMSource(discord.AudioSource):
         raise NotImplementedError
 
 
-class OpusAudioSource(discord.AudioSource):
+class StreamAudioSource(PlaybackSource):
     SILENCE_FRAME = b"\xf8\xff\xfe"
     BUFFER_SIZE = 200
 
-    def __init__(self, url: str):
+    def __init__(self, url: str, radio=False):
         self.url = url
+        self.radio = radio
         self.current_pts = 0
         self.paused = False
-        self.container = av.open(url, options={"timeout": "5000000"})  # 5s
-        self.stream = self.container.streams.audio[0]
-        self.packet_generator = self.container.demux(self.stream)
         self.buffer = deque()
         self.end = False
         self._lock = threading.Lock()
+        self.container = av.open(url, timeout=5)
+        self.stream = self.container.streams.audio[0]
+        self.packet_generator = self.container.demux(self.stream)
+        start_time = time.time()
         self.buffer.extend(islice(self.packet_generator, self.BUFFER_SIZE))
+        self.start = (start_time, self.buffer[0].pts)
 
     def set_pause(self, pause: bool):
         if pause and not self.paused:
             log.info("OpusAudioSource: Playback Paused")
+            if self.radio:
+                with self._lock:
+                    self.container.close()
+                    self.container = None
+                    self.buffer.clear()
         elif not pause and self.paused:
             log.info("OpusAudioSource: Playback Resumed")
+            if self.radio:
+                self._reconnect(True)
         self.paused = pause
 
     def read(self) -> bytes:
@@ -119,51 +122,64 @@ class OpusAudioSource(discord.AudioSource):
             try:
                 new_packet = next(self.packet_generator)
                 self.buffer.append(new_packet)
-            except av.error.OSError as e:
+            except (av.error.OSError, av.error.TimeoutError):
                 log.info("OpusAudioSource: lost connection, attempting reconnect")
-                self.container.close()
-                self.container = None
                 self._reconnect()
-            except (StopIteration, EOFError):
-                self.end = True
+            except (StopIteration, av.error.EOFError, av.error.ExitError):
+                if self.radio:
+                    log.info("OpusAudioSource: lost connection, attempting reconnect")
+                    self._reconnect(True)
+                else:
+                    self.end = True
 
-        if self.buffer:
+        while self.buffer:
             packet = self.buffer.popleft()
-            if packet.pts is not None:
+            if packet.pts is None:
+                log.info("OpusAudioSource: dropping packet")
+            else:
                 self.current_pts = packet.pts
-            return bytes(packet)
+                return bytes(packet)
 
         if self.end:
             return b""
         else:
             return self.SILENCE_FRAME
 
-    def _reconnect(self):
+    def _reconnect(self, reset=False):
+        if self.container:
+            self.container.close()
+        self.container = None
         seek_to = 0
-        if self.buffer:
-            last_packet = self.buffer[-1]
-            if last_packet.pts:
-                seek_to = last_packet.pts
+        if not reset:
+            if self.buffer:
+                last_packet = self.buffer[-1]
+                if last_packet.pts:
+                    seek_to = last_packet.pts
+                else:
+                    log.warning(f"OpusAudioSource: last packet wrong? {last_packet.pts}")
+                    seek_to = self.current_pts
             else:
-                log.warning(f"OpusAudioSource: last packet wrong? {last_packet.pts}")
+                log.warning("OpusAudioSource: no buffer?")
                 seek_to = self.current_pts
-        else:
-            log.warning("OpusAudioSource: no buffer?")
-            seek_to = self.current_pts
 
         def target():
             with self._lock:
                 try:
-                    container = av.open(self.url, options={"timeout": "3000000"})  # 3s
+                    container = av.open(self.url, timeout=5)
                     self.stream = container.streams.audio[0]
                     self.packet_generator = container.demux(self.stream)
-                    container.seek(seek_to, stream=self.stream)
+                    if not reset:
+                        container.seek(seek_to, stream=self.stream)
+                    start_time = time.time()
                     for packet in self.packet_generator:
+                        if self.end:
+                            break
+
                         if packet.pts is not None and packet.pts > seek_to:
                             self.buffer.append(packet)
                             if len(self.buffer) >= self.BUFFER_SIZE:
                                 break
-
+                    self.start = (start_time, self.buffer[0].pts)
                     log.info("OpusAudioSource: Connection established/recovered.")
                     self.container = container
                 except Exception as e:
@@ -178,6 +194,8 @@ class OpusAudioSource(discord.AudioSource):
         return True
 
     def duration(self) -> int:
+        if self.radio:
+            return None
         with self._lock:
             return int(self.stream.duration * self.stream.time_base)
 
@@ -186,6 +204,8 @@ class OpusAudioSource(discord.AudioSource):
             return self.container.size
 
     def remaining(self) -> int:
+        if self.radio:
+            return None
         with self._lock:
             if self.stream.time_base is None:
                 return None
@@ -198,21 +218,30 @@ class OpusAudioSource(discord.AudioSource):
             return int(remaining_units * self.stream.time_base)
 
     def seek(self, seconds: float):
+        if self.radio:
+            return
         with self._lock:
             timestamp = int(seconds / self.stream.time_base)
             self.container.seek(timestamp, stream=self.stream)
             self.packet_generator = self.container.demux(self.stream)
 
-    def playback_speed(self, speed: float):
-        raise NotImplementedError
-
     def close(self):
+        self.end = True
         with self._lock:
             if self.container:
                 self.container.close()
 
+    def lag(self):
+        if not self.radio:
+            return None
 
-class LazyPCMSource(PCMSource):
+        start_system_time, start_pts = self.start
+        elapsed_stream_time = (self.current_pts - start_pts) * self.stream.time_base
+        elapsed_system_time = time.time() - start_system_time
+        return elapsed_system_time - float(elapsed_stream_time)
+
+
+class LazyPCMSource(PlaybackSource):
     def __init__(self, url: str, pre_process=False):
         if pre_process:
             log.info(f"LazyPCMSource: Fetching and converting (ffmpeg) song data from '{url}'")
@@ -330,7 +359,7 @@ class LazyPCMSource(PCMSource):
         self.audio_file = None
 
 
-class EagerPCMSource(PCMSource):
+class EagerPCMSource(PlaybackSource):
     def __init__(self, url: str):
         log.info(f"EagerPCMSource: Fetching and converting (ffmpeg) song data from '{url}'")
         command = [
@@ -413,7 +442,7 @@ class Song:
     def __init__(self, json_data: dict, requested_by: str | None = None):
         if not json_data or not isinstance(json_data, dict):
             raise TypeError(f"Song: trying to create object from wrong data: {json_data}")
-        self.playback: PCMSource | OpusAudioSource | None = None
+        self.playback: PlaybackSource | None = None
         self.song_info = json_data
         self.requested_by = requested_by
 
@@ -421,7 +450,16 @@ class Song:
         return self.playback is not None
 
     def song_name(self) -> str:
-        return format_song_name(self.song_info)
+        original_by = self.original_artists
+        title = self.song_info.get("title", "")
+        covered_by = self.cover_artists
+        name = ""
+        if original_by:
+            name = f"{original_by} - "
+        name += title
+        if covered_by:
+            name += f" ({covered_by})"
+        return name
 
     def get_id(self) -> str | None:
         return self.song_info.get("id")
@@ -455,7 +493,7 @@ class Song:
         extension = song_url.rsplit(".", 1)[-1].lower()
         try:
             if opus:
-                self.playback = OpusAudioSource(song_url)
+                self.playback = StreamAudioSource(song_url)
         except Exception as e:
             log.warning(str(e), exc_info=e)
             opus = None
@@ -475,8 +513,22 @@ class Song:
         cover_str = ""
         artists_list = self.song_info.get("coverArtists")
         if artists_list:
-            cover_str = " & ".join(artists_list)
+            if isinstance(artists_list[0], dict):
+                cover_str = " & ".join(artist["name"] for artist in artists_list)
+            else:
+                cover_str = " & ".join(artists_list)
         return cover_str
+
+    @property
+    def original_artists(self) -> str:
+        original_str = ""
+        artists_list = self.song_info.get("originalArtists")
+        if artists_list:
+            if isinstance(artists_list[0], dict):
+                original_str = " & ".join(artist["name"] for artist in artists_list)
+            else:
+                original_str = " & ".join(artists_list)
+        return original_str
 
     def get_cover_art(self, download_animated=False) -> str | discord.File | None:
         if self.song_info.get("coverArt") and self.song_info["coverArt"].get("absolutePath"):
@@ -495,6 +547,93 @@ class Song:
                         return discord_file
 
         return None
+
+
+class RadioSong(Song):
+    def __init__(self, json_data, requested_by=None):
+        super().__init__(json_data, requested_by)
+
+    def remaning(self):
+        return 0
+
+    def download(self):
+        pass
+
+    def get_cover_art(self, download_animated=False):
+        art = super().get_cover_art(download_animated)
+        if art is None:
+            return self.song_info.get("_cover_art")
+        return art
+
+
+class RadioType(enum.Enum):
+    Radio21 = enum.auto()
+    SwarmFM = enum.auto()
+
+
+class Radio21(Song):
+    def __init__(self, requested_by=None):
+        self.playback: StreamAudioSource | None = None
+        self.data: dict | None = fetch_json_data(RADIO21_SONGDATA)
+        self.fetched_at = time.time()
+        self.requested_by = requested_by
+
+    def get_data(self):
+        data_age = time.time() - self.fetched_at + 1  # add 1s just in case
+        if not self.data or self.data.get("now_playing", {}).get("remaining", -999) < data_age:
+            self.data = fetch_json_data(RADIO21_SONGDATA)
+            self.fetched_at = time.time()
+        return self.data
+
+    def get_song(self, order="now_playing") -> Song | None:
+        radio_json = self.get_data()
+        if not radio_json:
+            return None
+        now_playing = radio_json.get(order)
+        if not now_playing:
+            return None
+        song = now_playing.get("song")
+        if not song:
+            return None
+        songId = song.get("custom_fields", {}).get("songId")
+        if not songId:
+            fake_song_info = {
+                "originalArtists": [song.get("artist", "")],
+                "duration": now_playing.get("duration", 0),
+                "_cover_art": song.get("art"),
+                "title": song.get("title"),
+            }
+            return RadioSong(fake_song_info, "")
+
+        song_info = fetch_json_data(SONG_API + songId)
+        if not song_info:
+            return None
+        else:
+            return RadioSong(song_info, "")
+
+    def download(self):
+        pass
+
+    def start(self):
+        self.playback = StreamAudioSource(RADIO21_URL, True)
+
+    def has_playback(self):
+        return self.playback is not None
+
+    def song_name(self) -> str:
+        radio_json = self.get_data()
+        return "Radio21: " + radio_json.get("now_playing", {}).get("song", {}).get("text", "")
+
+    def remaning(self) -> int | None:
+        radio_json = fetch_json_data(RADIO21_SONGDATA)
+        if not radio_json:
+            return None
+        self.data = radio_json
+        self.fetched_at = time.time()
+        remaning_time = radio_json.get("now_playing", {}).get("remaining")
+        if remaning_time:
+            remaning_time += 4
+        return remaning_time
 
 
 class MusicPlayer:
@@ -518,6 +657,9 @@ class MusicPlayer:
 
     def request_queue_duration(self) -> int | None:
         duration = 0
+        if isinstance(self.current_song, Radio21):
+            return None
+
         for song in self.requests_cache:
             song_duration = song.song_info.get("duration")
             if song_duration is None:
@@ -536,6 +678,9 @@ class MusicPlayer:
         else:
             # unhandled exception if deque empty, but we can't recover anyway
             self.current_song = self.cache.popleft()
+
+        if isinstance(self.current_song, Radio21):
+            self.current_song.start()
 
     def get_next_song(self) -> Song | None:
         if len(self.requests_cache) > 0:
@@ -646,3 +791,12 @@ class MusicPlayer:
         self.requests_cache.append(requested_song)
         self.refill()
         return len(self.requests_cache), requested_song
+
+    def request_radio(self, radio_type: RadioType, requested_by: str):
+        match radio_type:
+            case RadioType.Radio21:
+                self.requests_cache.append(Radio21(requested_by))
+            case RadioType.SwarmFM:
+                pass
+
+        return len(self.requests_cache)
