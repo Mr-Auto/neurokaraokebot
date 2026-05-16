@@ -1,4 +1,5 @@
 import logging
+from logging.handlers import TimedRotatingFileHandler
 import os
 from dotenv import load_dotenv
 from datetime import datetime
@@ -86,9 +87,13 @@ timestamp = datetime.now().strftime("%y%m%d-%H%M%S")
 os.makedirs("logs", exist_ok=True)
 os.makedirs("data", exist_ok=True)
 stats.load()
-handler = logging.handlers.TimedRotatingFileHandler("logs/current.log", "midnight", 1, 30, "utf-8")
+handler = TimedRotatingFileHandler("logs/current.log", "midnight", 1, 30, "utf-8")
 handler.namer = my_namer
-formatter = logging.Formatter("[{asctime}] [{levelname:<8} {module:>15}] {message}", style="{")
+formatter = logging.Formatter(
+    "[{asctime}] [{levelname:<8} {module:>15}] {classspecific}{message}",
+    style="{",
+    defaults={"classspecific": ""},
+)
 handler.setFormatter(formatter)
 bot = MyBot()
 print("Starting up")

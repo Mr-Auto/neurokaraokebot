@@ -23,7 +23,7 @@ MODE = 1
 
 
 def fetch_json_data(url: str, get=None, post=None, retries=3):
-    log.info(f"featch_json_data: Fetching json data from '{url}'")
+    log.info(f"fetch_json_data: Fetching json data from '{url}'")
     for i in range(retries):
         try:
             if post:
@@ -42,6 +42,12 @@ def fetch_json_data(url: str, get=None, post=None, retries=3):
                 log.warning("fetch_json_data: All retry attempts failed.")
 
 
+class ClassLogger(logging.LoggerAdapter):
+    def __init__(self, logger, obj):
+        classname = f"{obj.__class__.__name__}: " if obj else ""
+        super().__init__(logger, {"classspecific": classname})
+
+
 class PlaybackSource(discord.AudioSource):
     SAMPLE_RATE = 48000
     SAMPLES_PER_20MS = int(0.02 * SAMPLE_RATE)
@@ -51,15 +57,16 @@ class PlaybackSource(discord.AudioSource):
     def __init__(self):
         self.paused = False
         self.effects_board = pedalboard.Pedalboard()
+        self.log = ClassLogger(log, self)
 
     def is_opus(self):
         return False
 
     def set_pause(self, pause: bool):
         if pause and not self.paused:
-            log.info("PCMSource: Playback Paused")
+            self.log.info("Playback Paused")
         elif not pause and self.paused:
-            log.info("PCMSource: Playback Resumed")
+            self.log.info("Playback Resumed")
         self.paused = pause
 
     def duration(self) -> int:
@@ -86,30 +93,29 @@ class StreamAudioSource(PlaybackSource):
     BUFFER_SIZE = 200
 
     def __init__(self, url: str, radio=False):
+        super().__init__()
+        self.log = ClassLogger(log, self)
         self.url = url
         self.radio = radio
         self.current_pts = 0
-        self.paused = False
         self.buffer = deque()
         self.end = False
         self._lock = threading.Lock()
         self.container = av.open(url, timeout=5)
         self.stream = self.container.streams.audio[0]
         self.packet_generator = self.container.demux(self.stream)
-        start_time = time.time()
         self.buffer.extend(islice(self.packet_generator, self.BUFFER_SIZE))
-        self.start = (start_time, self.buffer[0].pts)
 
     def set_pause(self, pause: bool):
         if pause and not self.paused:
-            log.info("OpusAudioSource: Playback Paused")
+            self.log.info("Playback Paused")
             if self.radio:
                 with self._lock:
                     self.container.close()
                     self.container = None
                     self.buffer.clear()
         elif not pause and self.paused:
-            log.info("OpusAudioSource: Playback Resumed")
+            self.log.info("Playback Resumed")
             if self.radio:
                 self._reconnect(True)
         self.paused = pause
@@ -118,16 +124,17 @@ class StreamAudioSource(PlaybackSource):
         if self.paused:
             return self.SILENCE_FRAME
 
-        if self.container and not self.end:
+        if self.container and not self.end and not self._lock.locked():
             try:
-                new_packet = next(self.packet_generator)
+                with self._lock:
+                    new_packet = next(self.packet_generator)
                 self.buffer.append(new_packet)
             except (av.error.OSError, av.error.TimeoutError):
-                log.info("OpusAudioSource: lost connection, attempting reconnect")
+                self.log.info("lost connection, attempting reconnect")
                 self._reconnect()
             except (StopIteration, av.error.EOFError, av.error.ExitError):
                 if self.radio:
-                    log.info("OpusAudioSource: lost connection, attempting reconnect")
+                    self.log.info("lost connection, attempting reconnect")
                     self._reconnect(True)
                 else:
                     self.end = True
@@ -135,7 +142,7 @@ class StreamAudioSource(PlaybackSource):
         while self.buffer:
             packet = self.buffer.popleft()
             if packet.pts is None:
-                log.info("OpusAudioSource: dropping packet")
+                self.log.info("dropping packet")
             else:
                 self.current_pts = packet.pts
                 return bytes(packet)
@@ -156,10 +163,10 @@ class StreamAudioSource(PlaybackSource):
                 if last_packet.pts:
                     seek_to = last_packet.pts
                 else:
-                    log.warning(f"OpusAudioSource: last packet wrong? {last_packet.pts}")
+                    self.log.warning(f"last packet wrong? {last_packet.pts}")
                     seek_to = self.current_pts
             else:
-                log.warning("OpusAudioSource: no buffer?")
+                self.log.warning("no buffer?")
                 seek_to = self.current_pts
 
         def target():
@@ -170,7 +177,6 @@ class StreamAudioSource(PlaybackSource):
                     self.packet_generator = container.demux(self.stream)
                     if not reset:
                         container.seek(seek_to, stream=self.stream)
-                    start_time = time.time()
                     for packet in self.packet_generator:
                         if self.end:
                             break
@@ -179,11 +185,10 @@ class StreamAudioSource(PlaybackSource):
                             self.buffer.append(packet)
                             if len(self.buffer) >= self.BUFFER_SIZE:
                                 break
-                    self.start = (start_time, self.buffer[0].pts)
-                    log.info("OpusAudioSource: Connection established/recovered.")
+                    self.log.info("Connection established/recovered.")
                     self.container = container
                 except Exception as e:
-                    log.error(f"OpusAudioSource: Failed to re-connect: {e}")
+                    self.log.error(f"Failed to re-connect: {e}")
                     self.end = True
                     if container:
                         container.close()
@@ -227,24 +232,18 @@ class StreamAudioSource(PlaybackSource):
 
     def close(self):
         self.end = True
+        self.effects_board.reset()
         with self._lock:
             if self.container:
                 self.container.close()
 
-    def lag(self):
-        if not self.radio:
-            return None
-
-        start_system_time, start_pts = self.start
-        elapsed_stream_time = (self.current_pts - start_pts) * self.stream.time_base
-        elapsed_system_time = time.time() - start_system_time
-        return elapsed_system_time - float(elapsed_stream_time)
-
 
 class LazyPCMSource(PlaybackSource):
     def __init__(self, url: str, pre_process=False):
+        super().__init__()
+        self.log = ClassLogger(log, self)
         if pre_process:
-            log.info(f"LazyPCMSource: Fetching and converting (ffmpeg) song data from '{url}'")
+            self.log.info(f"Fetching and converting (ffmpeg) song data from '{url}'")
             # unsupported file format, we use ffmpeg to convert
             command = [
                 "ffmpeg",
@@ -269,11 +268,11 @@ class LazyPCMSource(PlaybackSource):
             if ffmpeg_log:
                 ffmpeg_log = ffmpeg_log.decode().strip()
             if process.returncode != 0:
-                raise RuntimeError(f"LazyPCMSource: ffmpeg returned: {ffmpeg_log}")
+                raise RuntimeError(f"{LazyPCMSource.__name__}: ffmpeg returned: {ffmpeg_log}")
             if ffmpeg_log:
-                log.error(f"LazyPCMSource: ffmpeg returned: {ffmpeg_log}")
+                self.log.error(f"ffmpeg returned: {ffmpeg_log}")
         else:
-            log.info(f"LazyPCMSource: Fetching song data from '{url}'")
+            self.log.info(f"Fetching song data from '{url}'")
             retries = 4
             for i in range(retries):
                 try:
@@ -281,11 +280,11 @@ class LazyPCMSource(PlaybackSource):
                     response.raise_for_status()
                     break
                 except (requests.exceptions.RequestException, ValueError) as e:
-                    log.warning(f"LazyPCMSource: Attempt {i + 1} failed: {e}")
+                    self.log.warning(f"Attempt {i + 1} failed: {e}")
                     if i < retries - 1:
                         time.sleep(2)
                     else:
-                        log.warning("LazyPCMSource: All retry attempts failed.")
+                        self.log.warning("All retry attempts failed.")
                         raise
             file_data = response.content
 
@@ -294,8 +293,7 @@ class LazyPCMSource(PlaybackSource):
             self.SAMPLE_RATE, pedalboard.Resample.Quality.ZeroOrderHold
         )
         if self.buffer.num_channels != 2:
-            log.warning(f"LazyPCMSource: File number of channels: {self.buffer.num_channels} != 2")
-        super().__init__()
+            self.log.warning(f"File number of channels: {self.buffer.num_channels} != 2")
 
     def read(self):
         """Discord calls this every 20ms to get the next chunk of audio."""
@@ -321,8 +319,8 @@ class LazyPCMSource(PlaybackSource):
             padding = self.BYTES_PER_20MS - chunk_size
             pcm_chunk += b"\x00" * padding
         elif len(pcm_chunk) > self.BYTES_PER_20MS:
-            log.error(
-                f"LazyPCMSource.read: Something went wrong, got more then 20ms of data.\nActual size: {chunk_size} expected: {self.BYTES_PER_20MS} index at {self.buffer.tell()}/{self.buffer.shape[1]}"
+            self.log.error(
+                f"Something went wrong, got more then 20ms of data.\nActual size: {chunk_size} expected: {self.BYTES_PER_20MS} index at {self.buffer.tell()}/{self.buffer.frames}"
             )
         return pcm_chunk
 
@@ -337,7 +335,7 @@ class LazyPCMSource(PlaybackSource):
 
     def size(self) -> int:
         """Numer of samples in the buffer"""
-        return self.buffer.shape[1]
+        return self.buffer.frames
 
     def remaining(self) -> int:
         """Remaining time in seconds"""
@@ -357,11 +355,14 @@ class LazyPCMSource(PlaybackSource):
     def close(self):
         self.buffer.close()
         self.audio_file = None
+        self.effects_board.reset()
 
 
 class EagerPCMSource(PlaybackSource):
     def __init__(self, url: str):
-        log.info(f"EagerPCMSource: Fetching and converting (ffmpeg) song data from '{url}'")
+        super().__init__()
+        self.log = ClassLogger(log, self)
+        self.log.info(f"Fetching and converting (ffmpeg) song data from '{url}'")
         command = [
             "ffmpeg",
             "-i",
@@ -383,17 +384,16 @@ class EagerPCMSource(PlaybackSource):
         if ffmpeg_log:
             ffmpeg_log = ffmpeg_log.decode().strip()
         if process.returncode != 0:
-            raise RuntimeError(f"EagerPCMSource: ffmpeg returned: {ffmpeg_log}")
+            raise RuntimeError(f"{EagerPCMSource.__name__}: ffmpeg returned: {ffmpeg_log}")
         if ffmpeg_log:
-            log.error(f"EagerPCMSource: ffmpeg returned: {ffmpeg_log}")
+            self.log.error(f"ffmpeg returned: {ffmpeg_log}")
         self.buffer = io.BytesIO(raw_pcm_data)
-        super().__init__()
 
     def read(self):
         """Discord calls this every 20ms to get the next chunk of audio."""
         if self.paused:
             return b"\x00" * self.BYTES_PER_20MS
-        # Read exactly 20ms of audio
+
         chunk = self.buffer.read(self.BYTES_PER_20MS)
         if not chunk:
             # ends playback
@@ -412,8 +412,8 @@ class EagerPCMSource(PlaybackSource):
             padding = self.BYTES_PER_20MS - chunk_size
             chunk += b"\x00" * padding
         elif chunk_size > self.BYTES_PER_20MS:
-            log.error(
-                f"EagerPCMSource.read: Something went wrong, got more then 20ms of data.\nActual size: {chunk_size} expected: {self.BYTES_PER_20MS} index at {self.buffer.tell()}/{self.buffer.shape[1]}"
+            self.log.error(
+                f"Something went wrong, got more then 20ms of data.\nActual size: {chunk_size} expected: {self.BYTES_PER_20MS} index at {self.buffer.tell()}/{self.size()}"
             )
         return chunk
 
@@ -422,20 +422,19 @@ class EagerPCMSource(PlaybackSource):
         self.buffer.seek(int(seconds * 192000))
 
     def duration(self) -> int:
-        nbytes = self.buffer.getbuffer().nbytes
-        return nbytes // self.BYTES_PER_SECOND
+        return self.size() // self.BYTES_PER_SECOND
 
     def size(self) -> int:
+        """Size of the internal buffer/container, mostly for debug"""
         return self.buffer.getbuffer().nbytes
 
     def remaining(self) -> int:
-        total_size = self.buffer.getbuffer().nbytes
-        current_pos = self.buffer.tell()
-        remaining_bytes = total_size - current_pos
+        remaining_bytes = self.size() - self.buffer.tell()
         return remaining_bytes // self.BYTES_PER_SECOND
 
     def close(self):
         self.buffer.close()
+        self.effects_board.reset()
 
 
 class Song:
@@ -488,7 +487,7 @@ class Song:
         if opus:
             song_url = STORAGE_URL + self.song_info["opus"].strip("/")
         else:
-            log.warning(f"Song '{self.get_id()}' is missing opus!")
+            log.warning(f"Song: '{self.get_id()}' is missing opus!")
             song_url = STORAGE_URL + self.song_info["absolutePath"].strip("/")
         extension = song_url.rsplit(".", 1)[-1].lower()
         try:

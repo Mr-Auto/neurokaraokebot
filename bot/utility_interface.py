@@ -234,6 +234,6 @@ class UtilityCog(commands.Cog):
             mp = music_players.get(guild.id)
             message += f"**{guild.name}** - MusicPlayer:`{mp is not None}` Connected to voice:`{vc is not None}`"
             if mp:
-                message += f" Playback:`{not mp.is_paused()}`"
+                message += f" Playback paused:`{mp.is_paused()}`"
             message += "\n"
         await ctx.reply(message)

@@ -570,13 +570,12 @@ class MusicCog(commands.Cog):
             if start_paused:
                 vc.pause()
         except Exception as e:
-            playback_size = (
-                mp.current_song.playback.size() if mp.current_song.has_playback() else None
-            )
+            cs = mp.current_song
+            playback_size = cs.playback.size() if cs.has_playback() else None
             log.error(
                 f"play_current: could not start the playback error: ({e}) Playback size: {playback_size} Song data:"
             )
-            log.error(mp.current_song.dump_json())
+            log.error(cs.dump_json())
             self.playback_end(vc, None)
         else:
             if mp.update_status:
@@ -589,10 +588,7 @@ class MusicCog(commands.Cog):
         if error and not isinstance(error, str):
             log.error(f"Error during playback: {error}", exc_info=error)
 
-        fut = asyncio.run_coroutine_threadsafe(
-            self.next_song(vc.guild.id, error is None), self.bot.loop
-        )
-        fut.result(timeout=5)
+        asyncio.run_coroutine_threadsafe(self.next_song(vc.guild.id, error is None), self.bot.loop)
 
     async def next_song(self, guild_id: int, success: bool):
         guild = self.bot.get_guild(guild_id)
