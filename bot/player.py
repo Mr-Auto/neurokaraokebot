@@ -117,7 +117,7 @@ class StreamAudioSource(PlaybackSource):
         self.reset = False
         self.end = False
         self._thread_active = False
-        self.next_song = False
+        self.next_song = 0
         self.update_song_func = None
 
     def start(self, func):
@@ -144,9 +144,12 @@ class StreamAudioSource(PlaybackSource):
             if this is None or this.end or not this.container:
                 break
 
-            if this.next_song and this.update_song_func:
-                this.update_song_func()
-                this.next_song = False
+            if this.next_song != 0 and this.update_song_func:
+                this.next_song += 1
+                # can't update too soon or it will pull the previous song name
+                if this.next_song > 15:
+                    this.update_song_func()
+                    this.next_song = 0
 
             if this.reset:
                 this.buffer.clear()
@@ -237,7 +240,7 @@ class StreamAudioSource(PlaybackSource):
                 self.log.info("dropping packet")
             else:
                 if self.radio and packet.pts < self.current_pts:
-                    self.next_song = True
+                    self.next_song = 1
                 self.current_pts = packet.pts
                 return bytes(packet)
 
