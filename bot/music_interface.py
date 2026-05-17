@@ -464,13 +464,27 @@ class MusicCog(commands.Cog):
         if len(playlist_id) != 36:
             await ctx.reply(f"Invalid playlist link or id {EMOTES.SILLY}")
             return
-
-        response = requests.get(PLAYLIST_API + playlist_id, headers={"x-guest-id": "67"}, timeout=8)
-        if response.status_code != 200:
-            await ctx.reply(
-                f"Something went wrong, status code: `{response.status_code}` {EMOTES.SILLY}"
+        artist_playlist = "/artist/" in url
+        if not artist_playlist:
+            response = requests.get(
+                PLAYLIST_API + playlist_id, headers={"x-guest-id": "67"}, timeout=8
             )
-            return
+
+            if response.status_code == 204 and len(url) < 40:
+                artist_playlist = True
+            elif response.status_code != 200:
+                await ctx.reply(
+                    f"Something went wrong, status code: `{response.status_code}` {EMOTES.SILLY}"
+                )
+                return
+
+        if artist_playlist:
+            response = requests.get(ARTIST_API + playlist_id, timeout=8)
+            if response.status_code != 200:
+                await ctx.reply(
+                    f"Something went wrong, status code: `{response.status_code}` {EMOTES.SILLY}"
+                )
+                return
 
         json_result = response.json()
         if "songListDTOs" not in json_result or len(json_result["songListDTOs"]) == 0:
