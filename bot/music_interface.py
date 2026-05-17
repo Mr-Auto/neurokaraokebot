@@ -18,10 +18,11 @@ log = logging.getLogger()
 
 
 class CoverBy(enum.Enum):
-    Vedal = 1
-    Twins = 2
-    Neuro = 3
-    Evil = 4
+    Vedal = enum.auto()
+    Twins = enum.auto()
+    Neuro = enum.auto()
+    Evil = enum.auto()
+    Unknown = enum.auto()
 
 
 def parse_cover_by(cover_str: str) -> CoverBy:
@@ -34,9 +35,9 @@ def parse_cover_by(cover_str: str) -> CoverBy:
     elif "Evil" in cover_str:
         return CoverBy.Evil
     else:
-        log.warning(f"parse_cover_by: error during parsing string - '{cover_str}'")
-        # default to some color
-        return CoverBy.Twins
+        if cover_str:
+            log.warning(f"parse_cover_by: error during parsing string - '{cover_str}'")
+        return CoverBy.Unknown
 
 
 def is_number(s: str) -> bool:
@@ -110,9 +111,9 @@ class MusicCog(commands.Cog):
             await ctx.reply(f"Can't play audio in '{ctx.channel.type}' channel! {EMOTES.SAD}")
             return
         channel = ctx.channel
-        await channel.connect(reconnect=False)
-        await ctx.reply(f"Starting Neuro Karaoke Playback in '{channel}' {EMOTES.HAPPY}")
         try:
+            await channel.connect(reconnect=False)
+            await ctx.reply(f"Starting Neuro Karaoke Playback in '{channel}' {EMOTES.HAPPY}")
             await self.start(ctx)
         except:
             await ctx.reply(f"Something went wrong {EMOTES.SILLY}")
@@ -194,22 +195,28 @@ class MusicCog(commands.Cog):
     async def song(self, ctx: commands.Context):
         """Check current song"""
         mp = self.get_music_player(ctx)
-        requested_by = mp.current_song.requested_by or self.bot.user.name
-        song_remaining = mp.current_song.remaning()
-        if song_remaining is None:
-            await ctx.reply(f"Something went wrong {EMOTES.SILLY}")
-            log.error(f"No playback for the current song!")
-            return
-        song_end = int(time.time()) + song_remaining
-        footer = f'Requested by "{requested_by}"'
-        note = f"Ends <t:{song_end}:R>"
+        current_song = mp.current_song
+        if isinstance(current_song, player.Radio21):
+            current_song = current_song.get_song()
+            note = None
+            footer = None
+            song_remaining = None
+        else:
+            song_remaining = current_song.remaning()
+            if song_remaining is None:
+                await ctx.reply(f"Something went wrong {EMOTES.SILLY}")
+                log.error(f"No playback for the current song!")
+                return
+            song_end = int(time.time()) + song_remaining
+            requested_by = current_song.requested_by or self.bot.user.name
+            footer = f'Requested by "{requested_by}"'
+            note = f"Ends <t:{song_end}:R>"
+
         if mp.is_paused():
             note = f"Ends `PAUSED` {EMOTES.PAUSE}"
             song_remaining = None
-        embed, discord_file = self.get_song_embed(
-            mp.current_song.song_info, note, footer, song_remaining
-        )
-        cover_str = " & ".join(mp.current_song.song_info["coverArtists"])
+        embed, discord_file = self.get_song_embed(current_song, note, footer, song_remaining)
+        cover_str = current_song.cover_artists
         cover_by = parse_cover_by(cover_str)
         emote_str = EMOTES.JAM
         match cover_by:
@@ -240,7 +247,7 @@ class MusicCog(commands.Cog):
         if line_end == -1 or symbol > line_end:
             return
         description_end = embed.description[line_end + 1 :]
-        duration = song.song_info["duration"]
+        duration = song.duration
         counter = 0
         while True:
             await asyncio.sleep(2)
@@ -266,13 +273,19 @@ class MusicCog(commands.Cog):
         """Check the next song"""
         next_song = None
         mp = self.get_music_player(ctx)
-        next_song = mp.get_next_song()
+        if isinstance(mp.current_song, player.Radio21):
+            next_song = mp.current_song.get_song("playing_next")
+        else:
+            next_song = mp.get_next_song()
+
         if not next_song:
             await ctx.reply(f"No song's in the queue? {EMOTES.SILLY}")
             log.info(f"nextsong: No songs in the queue WTF?!")
             return
-
-        requested_by = next_song.requested_by or self.bot.user.name
+        if isinstance(mp.current_song, player.Radio21):
+            requested_by = ""
+        else:
+            requested_by = next_song.requested_by or self.bot.user.name
         song_remaining = mp.current_song.remaning()
         if song_remaining is None:
             await ctx.reply(f"Something went wrong {EMOTES.SILLY}")
@@ -283,8 +296,8 @@ class MusicCog(commands.Cog):
         note = f"Playing <t:{song_end}:R>"
         if mp.is_paused():
             note = f"Playing `PAUSED` {EMOTES.PAUSE}"
-        embed, discord_file = self.get_song_embed(next_song.song_info, note, footer)
-        cover_str = " & ".join(next_song.song_info["coverArtists"])
+        embed, discord_file = self.get_song_embed(next_song, note, footer)
+        cover_str = next_song.cover_artists
         cover_by = parse_cover_by(cover_str)
         emote_str = EMOTES.JAM
         match cover_by:
@@ -374,7 +387,7 @@ class MusicCog(commands.Cog):
         if not data or not isinstance(data, list) or len(data) == 0:
             await ctx.reply("Unable to fetch data from api.neurokaraoke.com")
             return
-        embed, discord_file = self.get_song_embed(data[0])
+        embed, discord_file = self.get_song_embed(player.Song(data[0]))
         vc = ctx.voice_client
         view = None
         if (
@@ -436,7 +449,7 @@ class MusicCog(commands.Cog):
             await ctx.reply(f"Invalid playlist link or id {EMOTES.SILLY}")
             return
 
-        response = requests.get(PLAYLIST_API + playlist_id, headers={"x-guest-id": "67"})
+        response = requests.get(PLAYLIST_API + playlist_id, headers={"x-guest-id": "67"}, timeout=8)
         if response.status_code != 200:
             await ctx.reply(
                 f"Something went wrong, status code: `{response.status_code}` {EMOTES.SILLY}"
@@ -457,7 +470,7 @@ class MusicCog(commands.Cog):
     @cmd_verify()
     async def setlist(self, ctx: commands.Context):
         """Show all avaible karaoke setlists, allows opening them and songs request"""
-        response = requests.get(SETLISTS_API)
+        response = requests.get(SETLISTS_API, timeout=8)
         if response.status_code != 200:
             await ctx.reply(
                 f"Something went wrong, status code: `{response.status_code}` {EMOTES.SILLY}"
@@ -472,8 +485,45 @@ class MusicCog(commands.Cog):
         view = SetlistsView(json_result, ctx.author.id)
         view.message = await ctx.reply(view=view)
 
+    @commands.command()
+    @cmd_verify()
+    async def radio(self, ctx: commands.Context, radio="21"):
+        """Request radio playback, avaible options: [Radio21, SwarmFM]"""
+        mp = self.get_music_player(ctx)
+        if radio.lower() in ("21", "radio21", "neuro_21"):
+            radio_type = player.RadioType.Radio21
+        else:
+            await ctx.reply(f"Unknown radio ")
+            return
+
+        queue_duration = mp.request_queue_duration()
+        playing_in_str = f"`PAUSED` {EMOTES.PAUSE}"
+        if not mp.is_paused():
+            if queue_duration is not None:
+                playing_in = int(time.time()) + queue_duration
+                playing_in_str = f"<t:{playing_in}:R>"
+            else:
+                playing_in_str = f"`Unknown` {EMOTES.SILLY}"
+
+        position = mp.request_radio(radio_type, ctx.author.name)
+        await ctx.reply(
+            f"Added `Radio 21` at position {position} in the queue\nPlaying {playing_in_str}"
+        )
+
     def get_music_player(self, ctx: commands.Context) -> player.MusicPlayer:
         return self.music_players.get(ctx.guild.id)
+
+    def update_status(self, guild_id: int):
+        mp = self.music_players.get(guild_id)
+        if mp and mp.update_status:
+            guild = self.bot.get_guild(guild_id)
+            if guild is not None:
+                song_name = mp.current_song.song_name()
+                if mp.is_paused():
+                    song_name = f"{EMOTES.PAUSE} {song_name}"
+                asyncio.run_coroutine_threadsafe(
+                    guild.voice_client.channel.edit(status=song_name), self.bot.loop
+                )
 
     async def start(self, ctx: commands.Context):
         vc = ctx.voice_client
@@ -516,6 +566,8 @@ class MusicCog(commands.Cog):
 
         try:
             log.info(f"play_current: Starting playback '{mp.current_song.song_name()}'")
+            set_status_lambda = lambda: self.update_status(vc.guild.id)
+            mp.current_song.playback.start(set_status_lambda)
             vc.play(
                 mp.current_song.playback,
                 bitrate=192,
@@ -525,13 +577,12 @@ class MusicCog(commands.Cog):
             if start_paused:
                 vc.pause()
         except Exception as e:
-            playback_size = (
-                mp.current_song.playback.size() if mp.current_song.has_playback() else None
-            )
+            cs = mp.current_song
+            playback_size = cs.playback.size() if cs.has_playback() else None
             log.error(
                 f"play_current: could not start the playback error: ({e}) Playback size: {playback_size} Song data:"
             )
-            log.error(mp.current_song.dump_json())
+            log.error(cs.dump_json())
             self.playback_end(vc, None)
         else:
             if mp.update_status:
@@ -544,8 +595,7 @@ class MusicCog(commands.Cog):
         if error:
             log.error(f"Error during playback: {error}", exc_info=error)
 
-        fut = asyncio.run_coroutine_threadsafe(self.next_song(vc.guild.id), self.bot.loop)
-        fut.result()
+        asyncio.run_coroutine_threadsafe(self.next_song(vc.guild.id, error is None), self.bot.loop)
 
     async def next_song(self, guild_id: int):
         guild = self.bot.get_guild(guild_id)
@@ -575,19 +625,21 @@ class MusicCog(commands.Cog):
 
     @staticmethod
     def get_song_embed(
-        song_info: dict,
+        song: player.Song,
         last_section: str | None = None,
         footer: str | None = None,
         remaining: int = None,
     ):
-        original_by = " & ".join(song_info["originalArtists"])
-        date = song_info.get("streamDate")
+        original_by = song.original_artists
+        date = song.song_info.get("streamDate")
+        if not date:
+            date = song.song_info.get("karaokeDate")
         if date:
             date = datetime.datetime.fromisoformat(date).strftime("%B %d, %Y")
-        minutes, seconds = divmod(song_info["duration"] or 0, 60)
-        song = player.Song(song_info)
+        duration = song.duration or 0
+        minutes, seconds = divmod(duration, 60)
         song_url = song.get_url()
-        cover_str = " & ".join(song_info["coverArtists"])
+        cover_str = song.cover_artists
         cover_by = parse_cover_by(cover_str)
 
         color = COLORS.EMBED_DEFAULT
@@ -601,15 +653,26 @@ class MusicCog(commands.Cog):
             case CoverBy.Evil:
                 color = COLORS.EVIL
 
-        play_count = song_info["playCount"]
+        play_count = song.song_info.get("playCount")
         song_name = song.song_name()
-        description = f"Cover by {cover_str}\n\nOriginal by {original_by}\n\nStream date: {date}"
-        if remaining and song_info["duration"] and song_info["duration"] != 0:
-            pminutes, pseconds = divmod(song_info["duration"] - remaining, 60)
-            seg = (remaining * 10) // song_info["duration"]
-            description += f"\n-# {pminutes}:{pseconds:02} {'▬'*(10-seg)}❍{'▬'*seg} {minutes}:{seconds:02}\n{play_count} plays"
+        description = ""
+        if cover_str:
+            description = f"Cover by {cover_str}\n\n"
+        description += f"Original by {original_by}"
+        if date:
+            description += f"\n\nStream date: {date}"
+        if remaining and duration != 0:
+            pminutes, pseconds = divmod(duration - remaining, 60)
+            seg = (remaining * 10) // duration
+            description += (
+                f"\n-# {pminutes}:{pseconds:02} {'▬'*(10-seg)}❍{'▬'*seg} {minutes}:{seconds:02}"
+            )
+            if play_count:
+                description += f"\n{play_count} plays"
         else:
-            description += f"\n{minutes}:{seconds:02} {play_count} plays"
+            description += f"\n{minutes}:{seconds:02}"
+            if play_count:
+                description += f"  {play_count} plays"
         if last_section:
             description += f"\n\n{last_section}"
         embed = discord.Embed(title=song_name, description=description, color=color, url=song_url)
@@ -645,7 +708,7 @@ class MusicCog(commands.Cog):
                 was_paused = mp.is_paused()
                 mp.pause()
                 log.warning("Detected active playback, attempting to resume")
-                await asyncio.sleep(1)
+                await asyncio.sleep(0.5)
                 vc = await before.channel.connect(reconnect=False)
                 # We use play_current so it will continue playing the song
                 # Even if alone_counter is met, we need to start playback to put it in valid vc state

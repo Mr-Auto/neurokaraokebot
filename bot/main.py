@@ -1,4 +1,5 @@
 import logging
+from logging.handlers import TimedRotatingFileHandler
 import os
 from dotenv import load_dotenv
 from datetime import datetime
@@ -74,16 +75,26 @@ class MyBot(commands.Bot):
         )
 
 
+def my_namer(default_name: str) -> str:
+    date_part = default_name.split(".")[-1]
+    return f"logs/{date_part}.log"
+
+
 timestamp = datetime.now().strftime("%y%m%d-%H%M%S")
 os.makedirs("logs", exist_ok=True)
 os.makedirs("data", exist_ok=True)
-log_filename = f"logs/neurokaraoke_{timestamp}.log"
-handler = logging.FileHandler(filename=log_filename, encoding="utf-8", mode="w")
-formatter = logging.Formatter("[{asctime}] [{levelname:<8} {module:>15}] {message}", style="{")
+stats.load()
+handler = TimedRotatingFileHandler("logs/current.log", "midnight", 1, 30, "utf-8")
+handler.namer = my_namer
+formatter = logging.Formatter(
+    "[{asctime}] [{levelname:<8} {module:>15}] {classspecific}{message}",
+    style="{",
+    defaults={"classspecific": ""},
+)
 handler.setFormatter(formatter)
 bot = MyBot()
 print("Starting up")
 load_dotenv()
 bot.run(os.getenv("BOT_TOKEN"), log_handler=handler, log_formatter=formatter, root_logger=True)
 print("Shutting down")
-log.info("Shutting down")
+log.info("Shutting down\n\n")

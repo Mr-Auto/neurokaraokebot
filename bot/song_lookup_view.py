@@ -185,7 +185,7 @@ class SetlistButton(ui.Button):
         return True
 
     async def callback(self, interact: discord.Interaction):
-        response = requests.get(PLAYLIST_API + self.data["id"], headers={"x-guest-id": "69"})
+        response = requests.get(PLAYLIST_API + self.data["id"], headers={"x-guest-id": "69"}, timeout=8)
         if response.status_code != 200:
             await interact.response.send_message(
                 f"Something went wrong, status code: `{response.status_code}` {EMOTES.SILLY}",
