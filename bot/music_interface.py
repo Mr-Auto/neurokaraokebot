@@ -498,6 +498,12 @@ class MusicCog(commands.Cog):
     async def radio(self, ctx: commands.Context, radio="21"):
         """Request radio playback, avaible options: [Radio21, SwarmFM]"""
         mp = self.get_music_player(ctx)
+        if radio.lower() in ("21", "radio21", "neuro_21"):
+            radio_type = player.RadioType.Radio21
+        else:
+            await ctx.reply(f"Unknown radio ")
+            return
+
         queue_duration = mp.request_queue_duration()
         playing_in_str = f"`PAUSED` {EMOTES.PAUSE}"
         if not mp.is_paused():
@@ -507,13 +513,25 @@ class MusicCog(commands.Cog):
             else:
                 playing_in_str = f"`Unknown` {EMOTES.SILLY}"
 
-        position = mp.request_radio(player.RadioType.Radio21, ctx.author.name)
+        position = mp.request_radio(radio_type, ctx.author.name)
         await ctx.reply(
             f"Added `Radio 21` at position {position} in the queue\nPlaying {playing_in_str}"
         )
 
     def get_music_player(self, ctx: commands.Context) -> player.MusicPlayer:
         return self.music_players.get(ctx.guild.id)
+
+    def update_status(self, guild_id: int):
+        mp = self.music_players.get(guild_id)
+        if mp and mp.update_status:
+            guild = self.bot.get_guild(guild_id)
+            if guild is not None:
+                song_name = mp.current_song.song_name()
+                if mp.is_paused():
+                    song_name = f"{EMOTES.PAUSE} {song_name}"
+                asyncio.run_coroutine_threadsafe(
+                    guild.voice_client.channel.edit(status=song_name), self.bot.loop
+                )
 
     async def start(self, ctx: commands.Context):
         vc = ctx.voice_client
@@ -561,6 +579,8 @@ class MusicCog(commands.Cog):
         mp.apply_effects_board()
         try:
             log.info(f"play_current: Starting playback '{mp.current_song.song_name()}'")
+            set_status_lambda = lambda: self.update_status(vc.guild.id)
+            mp.current_song.playback.start(set_status_lambda)
             vc.play(
                 mp.current_song.playback,
                 bitrate=192,

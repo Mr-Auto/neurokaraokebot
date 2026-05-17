@@ -1,5 +1,6 @@
 import enum
 import threading
+import weakref
 import discord
 import io
 import subprocess
@@ -87,6 +88,9 @@ class PlaybackSource(discord.AudioSource):
     def close(self):
         raise NotImplementedError
 
+    def start(self, func):
+        pass
+
 
 class StreamAudioSource(PlaybackSource):
     SILENCE_FRAME = b"\xf8\xff\xfe"
@@ -99,51 +103,141 @@ class StreamAudioSource(PlaybackSource):
         self.radio = radio
         self.current_pts = 0
         self.buffer = deque()
-        self.end = False
         self._lock = threading.Lock()
-        self.container = av.open(url, timeout=5)
-        self.stream = self.container.streams.audio[0]
-        self.packet_generator = self.container.demux(self.stream)
-        self.buffer.extend(islice(self.packet_generator, self.BUFFER_SIZE))
+        if radio:
+            self.container = None
+            self.stream = None
+            self.packet_generator = None
+        else:
+            self.container = av.open(url, timeout=5)
+            self.stream = self.container.streams.audio[0]
+            self.packet_generator = self.container.demux(self.stream)
+            self.buffer.extend(islice(self.packet_generator, self.BUFFER_SIZE))
+
+        self.reset = False
+        self.end = False
+        self._thread_active = False
+        self.next_song = False
+        self.update_song_func = None
+
+    def start(self, func):
+        if self._thread_active:
+            return
+
+        if self.radio:
+            self.update_song_func = func
+            self.container = av.open(self.url, timeout=5)
+            self.stream = self.container.streams.audio[0]
+            self.packet_generator = self.container.demux(self.stream)
+            self.buffer.extend(islice(self.packet_generator, self.BUFFER_SIZE))
+
+        self._thread_active = True
+        self_weak = weakref.ref(self)
+        thread = threading.Thread(target=self._run_loop, args=(self_weak,), daemon=True)
+        thread.start()
+
+    @staticmethod
+    def _run_loop(weak_self: weakref.ReferenceType["StreamAudioSource"]):
+        container_ref = weak_self().container
+        while True:
+            this = weak_self()
+            if this is None or this.end or not this.container:
+                break
+
+            if this.next_song and this.update_song_func:
+                this.update_song_func()
+                this.next_song = False
+
+            if this.reset:
+                this.buffer.clear()
+                this.reset = False
+                this._reconnect(True)
+
+            reconnected = False
+            if not this.paused:
+                try:
+                    while len(this.buffer) < this.BUFFER_SIZE:
+                        new_packet = next(this.packet_generator)
+                        this.buffer.append(new_packet)
+                except (av.error.OSError, av.error.TimeoutError):
+                    this.log.info("lost connection, attempting reconnect")
+                    this._reconnect()
+                    container_ref = this.container
+                    reconnected = True
+                except (StopIteration, av.error.EOFError, av.error.ExitError):
+                    if this.radio:
+                        this.log.info("lost connection, attempting reconnect")
+                        this._reconnect(True)
+                        container_ref = this.container
+                        reconnected = True
+                    else:
+                        this.end = True
+                except Exception as e:
+                    this.log.error(f"Unknown exception trying to read packet: {e}")
+
+            this = None
+            if not reconnected:
+                time.sleep(0.05)
+        if container_ref:
+            container_ref.close()
+
+    def _reconnect(self, reset=False):
+        with self._lock:
+            if self.container:
+                self.container.close()
+            self.container = None
+            seek_to = 0
+            if not reset:
+                if self.buffer:
+                    last_packet = self.buffer[-1]
+                    if last_packet.pts:
+                        seek_to = last_packet.pts
+
+                if seek_to == 0:
+                    seek_to = self.current_pts
+
+            try:
+                container = av.open(self.url, timeout=5)
+                self.stream = container.streams.audio[0]
+                self.packet_generator = container.demux(self.stream)
+                if not reset and seek_to != 0:
+                    self.log.info("seeking to where we left of")
+                    container.seek(seek_to, stream=self.stream)
+                for packet in self.packet_generator:
+                    if self.end:
+                        break
+                    if packet.pts is not None and packet.pts > seek_to:
+                        self.buffer.append(packet)
+                        break
+
+                self.log.info("Connection established/recovered.")
+                self.container = container
+            except Exception as e:
+                self.log.error(f"Failed to re-connect: {e}")
+                self.end = True
+                if container:
+                    container.close()
 
     def set_pause(self, pause: bool):
         if pause and not self.paused:
             self.log.info("Playback Paused")
-            if self.radio:
-                with self._lock:
-                    self.container.close()
-                    self.container = None
-                    self.buffer.clear()
         elif not pause and self.paused:
             self.log.info("Playback Resumed")
             if self.radio:
-                self._reconnect(True)
+                self.reset = True
         self.paused = pause
 
     def read(self) -> bytes:
         if self.paused:
             return self.SILENCE_FRAME
 
-        if self.container and not self.end and not self._lock.locked():
-            try:
-                with self._lock:
-                    new_packet = next(self.packet_generator)
-                self.buffer.append(new_packet)
-            except (av.error.OSError, av.error.TimeoutError):
-                self.log.info("lost connection, attempting reconnect")
-                self._reconnect()
-            except (StopIteration, av.error.EOFError, av.error.ExitError):
-                if self.radio:
-                    self.log.info("lost connection, attempting reconnect")
-                    self._reconnect(True)
-                else:
-                    self.end = True
-
         while self.buffer:
             packet = self.buffer.popleft()
             if packet.pts is None:
                 self.log.info("dropping packet")
             else:
+                if self.radio and packet.pts < self.current_pts:
+                    self.next_song = True
                 self.current_pts = packet.pts
                 return bytes(packet)
 
@@ -151,49 +245,6 @@ class StreamAudioSource(PlaybackSource):
             return b""
         else:
             return self.SILENCE_FRAME
-
-    def _reconnect(self, reset=False):
-        if self.container:
-            self.container.close()
-        self.container = None
-        seek_to = 0
-        if not reset:
-            if self.buffer:
-                last_packet = self.buffer[-1]
-                if last_packet.pts:
-                    seek_to = last_packet.pts
-                else:
-                    self.log.warning(f"last packet wrong? {last_packet.pts}")
-                    seek_to = self.current_pts
-            else:
-                self.log.warning("no buffer?")
-                seek_to = self.current_pts
-
-        def target():
-            with self._lock:
-                try:
-                    container = av.open(self.url, timeout=5)
-                    self.stream = container.streams.audio[0]
-                    self.packet_generator = container.demux(self.stream)
-                    if not reset:
-                        container.seek(seek_to, stream=self.stream)
-                    for packet in self.packet_generator:
-                        if self.end:
-                            break
-
-                        if packet.pts is not None and packet.pts > seek_to:
-                            self.buffer.append(packet)
-                            if len(self.buffer) >= self.BUFFER_SIZE:
-                                break
-                    self.log.info("Connection established/recovered.")
-                    self.container = container
-                except Exception as e:
-                    self.log.error(f"Failed to re-connect: {e}")
-                    self.end = True
-                    if container:
-                        container.close()
-
-        threading.Thread(target=target, daemon=True).start()
 
     def is_opus(self) -> bool:
         return True
@@ -206,7 +257,7 @@ class StreamAudioSource(PlaybackSource):
 
     def size(self) -> int:
         with self._lock:
-            return self.container.size
+            return self.container.size if self.container else None
 
     def remaining(self) -> int:
         if self.radio:
@@ -233,9 +284,6 @@ class StreamAudioSource(PlaybackSource):
     def close(self):
         self.end = True
         self.effects_board.reset()
-        with self._lock:
-            if self.container:
-                self.container.close()
 
 
 class LazyPCMSource(PlaybackSource):
@@ -578,7 +626,7 @@ class Radio21(Song):
         self.requested_by = requested_by
 
     def get_data(self):
-        data_age = time.time() - self.fetched_at + 1  # add 1s just in case
+        data_age = time.time() - self.fetched_at + 5
         if not self.data or self.data.get("now_playing", {}).get("remaining", -999) < data_age:
             self.data = fetch_json_data(RADIO21_SONGDATA)
             self.fetched_at = time.time()
@@ -611,9 +659,6 @@ class Radio21(Song):
             return RadioSong(song_info, "")
 
     def download(self):
-        pass
-
-    def start(self):
         self.playback = StreamAudioSource(RADIO21_URL, True)
 
     def has_playback(self):
@@ -677,9 +722,6 @@ class MusicPlayer:
         else:
             # unhandled exception if deque empty, but we can't recover anyway
             self.current_song = self.cache.popleft()
-
-        if isinstance(self.current_song, Radio21):
-            self.current_song.start()
 
     def get_next_song(self) -> Song | None:
         if len(self.requests_cache) > 0:
