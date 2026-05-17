@@ -434,10 +434,9 @@ class MusicCog(commands.Cog):
     @commands.command(aliases=("fs",))
     async def findsong(self, ctx: commands.Context, *, search_string: str):
         """Lookup for specific song, allows request from the list if used in VC"""
-        # we pull max 99 songs since the view shows up to 9 songs at once
-        # it thorws error at us if we try to show 10
+        # we pull max 60 songs since the view shows up to 6 songs at once
         response = song_search(
-            search=search_string, page=1, pageSize=99, sortBy="KaraokeDate", sortDesc=True
+            search=search_string, page=1, pageSize=60, sortBy="KaraokeDate", sortDesc=True
         )
         if not response or "items" not in response:
             await ctx.reply(f"Got empty request back {EMOTES.SAD}")
