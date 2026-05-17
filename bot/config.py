@@ -1,5 +1,3 @@
-# Channels that the commands unrelated to VC are allowed in
-ALLOWED_CHANNELS = (0,)
 # Max songs cached, since we use double cache, with requested songs it will be 6
 # (3 in random queue and 3 in request queue, assuming there is 3 or more songs requested)
 MAX_CACHE = 3

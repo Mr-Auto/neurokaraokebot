@@ -8,7 +8,6 @@ from discord.ext import commands
 
 import stats
 import player
-from music_interface import cmd_verify
 from config import EMOTES
 
 log = logging.getLogger()
@@ -30,7 +29,6 @@ class UtilityCog(commands.Cog):
         self.bot = bot
 
     @commands.command(name="commands", hidden=True)
-    @cmd_verify(True)
     async def commands_list(self, ctx: commands.Context):
         """List of all commands"""
         embed = discord.Embed(title="Command List", color=discord.Color.orange())
@@ -81,8 +79,7 @@ class UtilityCog(commands.Cog):
         await self.bot.close()
 
     @commands.command(hidden=True)
-    @cmd_verify(True)
-    # @commands.is_owner()
+    @commands.is_owner()
     async def emotes(self, ctx: commands.Context, group_name: str):
         """Debug"""
         all_groups = EMOTES.groups()
@@ -112,7 +109,6 @@ class UtilityCog(commands.Cog):
             await ctx.reply(f"Stats saved successfully {EMOTES.HAPPY}")
 
     @commands.command()
-    @cmd_verify(True)
     async def stats(
         self,
         ctx: commands.Context,
@@ -205,23 +201,6 @@ class UtilityCog(commands.Cog):
             await ctx.reply(f"Current mode: `LazyPCMSource(pedalboard)` {EMOTES.LOADING}")
         else:
             await ctx.reply(f"Current mode: `EagerPCMSource(ffmpeg)` {EMOTES.PAUSE}")
-
-    @commands.command(priority=7)
-    @cmd_verify()
-    async def updatestatus(self, ctx: commands.Context, update: bool):
-        """Disable/enable bot updating VC status with song name"""
-        music_players = ctx.bot.get_cog("MusicCog").music_players
-        mp = music_players.get(ctx.guild.id)
-        if mp.update_status != update:
-            if update:
-                await ctx.reply(f"Status updates back ON {EMOTES.OK}")
-                song_name = mp.current_song.song_name()
-                if mp.is_paused():
-                    song_name = f"{EMOTES.PAUSE} {song_name}"
-                await ctx.channel.edit(status=song_name)
-            else:
-                await ctx.reply(f"Status updates OFF {EMOTES.NWELIV}")
-        mp.update_status = update
 
     @commands.command(priority=7, aliases=("issues", "problem", "problems"))
     async def issue(self, ctx: commands.Context):

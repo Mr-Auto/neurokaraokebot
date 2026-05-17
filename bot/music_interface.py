@@ -55,18 +55,13 @@ class NotAllowedError(commands.CommandError):
 
 # check if command is allowed in certain situation.
 # This also disabled the message event about missing parameter as it needs to satisfy this condition first
-def cmd_verify(allowed_channels=False):
+def cmd_verify():
     async def predicate(ctx: commands.Context):
-        extra = ""
-        if allowed_channels:
-            extra = " or allowed channels"
-            if ctx.channel.id in ALLOWED_CHANNELS:
-                return True
         vc = ctx.voice_client
         mp = ctx.bot.get_cog("MusicCog").get_music_player(ctx)
         if not vc or not mp:
             raise NotAllowedError(
-                f"Bot not running, use !karaokehere to invite it to VC. Command allowed only in VC{extra}"
+                "Bot not running, use !karaokehere to invite it to VC. Command allowed only in VC"
             )
 
         if (
@@ -74,7 +69,7 @@ def cmd_verify(allowed_channels=False):
             or not ctx.author.voice
             or ctx.author.voice.channel.id != vc.channel.id
         ):
-            raise NotAllowedError(f"You can only use this command in VC with the bot{extra}")
+            raise NotAllowedError("You can only use this command in VC with the bot")
 
         return True
 
@@ -388,7 +383,6 @@ class MusicCog(commands.Cog):
         mp.refill()
 
     @commands.command(aliases=("random",))
-    @cmd_verify(True)
     async def randomsong(self, ctx: commands.Context):
         """Random song from neurokaraoke.com"""
         data = player.fetch_json_data(RANDOM_API)
@@ -421,8 +415,23 @@ class MusicCog(commands.Cog):
         if view:
             view.message = message
 
+    @commands.command(priority=7)
+    @cmd_verify()
+    async def updatestatus(self, ctx: commands.Context, update: bool):
+        """Disable/enable bot updating VC status with song name"""
+        mp = self.get_music_player(ctx)
+        if mp.update_status != update:
+            if update:
+                await ctx.reply(f"Status updates back ON {EMOTES.OK}")
+                song_name = mp.current_song.song_name()
+                if mp.is_paused():
+                    song_name = f"{EMOTES.PAUSE} {song_name}"
+                await ctx.channel.edit(status=song_name)
+            else:
+                await ctx.reply(f"Status updates OFF {EMOTES.NWELIV}")
+        mp.update_status = update
+
     @commands.command(aliases=("fs",))
-    @cmd_verify(True)
     async def findsong(self, ctx: commands.Context, *, search_string: str):
         """Lookup for specific song, allows request from the list if used in VC"""
         # we pull max 99 songs since the view shows up to 9 songs at once

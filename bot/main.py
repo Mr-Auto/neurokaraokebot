@@ -2,7 +2,6 @@ import logging
 from logging.handlers import TimedRotatingFileHandler
 import os
 from dotenv import load_dotenv
-from datetime import datetime
 from discord import Intents, Activity, ActivityType, StatusDisplayType
 from discord.ext import commands
 
@@ -83,7 +82,6 @@ def my_namer(default_name: str) -> str:
     return f"logs/{date_part}.log"
 
 
-timestamp = datetime.now().strftime("%y%m%d-%H%M%S")
 os.makedirs("logs", exist_ok=True)
 os.makedirs("data", exist_ok=True)
 stats.load()
