@@ -1,3 +1,6 @@
+import enum
+import threading
+import weakref
 import discord
 import io
 import subprocess
@@ -279,7 +282,6 @@ class StreamAudioSource(PlaybackSource):
 
     def close(self):
         self.end = True
-        self.effects_board.reset()
 
 
 class LazyPCMSource(PlaybackSource):
@@ -398,7 +400,6 @@ class LazyPCMSource(PlaybackSource):
     def close(self):
         self.buffer.close()
         self.audio_file = None
-        self.effects_board.reset()
 
 
 class EagerPCMSource(PlaybackSource):
@@ -469,7 +470,6 @@ class EagerPCMSource(PlaybackSource):
 
     def close(self):
         self.buffer.close()
-        self.effects_board.reset()
 
 
 class Song:
@@ -602,7 +602,6 @@ class RadioSong(Song):
 
 class RadioType(enum.Enum):
     Radio21 = enum.auto()
-    SwarmFM = enum.auto()
 
 
 class Radio21(Song):
@@ -776,7 +775,5 @@ class MusicPlayer:
         match radio_type:
             case RadioType.Radio21:
                 self.requests_cache.append(Radio21(requested_by))
-            case RadioType.SwarmFM:
-                pass
 
         return len(self.requests_cache)

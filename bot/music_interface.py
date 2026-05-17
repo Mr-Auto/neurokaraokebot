@@ -595,7 +595,7 @@ class MusicCog(commands.Cog):
         if error:
             log.error(f"Error during playback: {error}", exc_info=error)
 
-        asyncio.run_coroutine_threadsafe(self.next_song(vc.guild.id, error is None), self.bot.loop)
+        asyncio.run_coroutine_threadsafe(self.next_song(vc.guild.id), self.bot.loop)
 
     async def next_song(self, guild_id: int):
         guild = self.bot.get_guild(guild_id)
