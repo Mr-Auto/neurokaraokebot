@@ -223,6 +223,27 @@ class UtilityCog(commands.Cog):
                 await ctx.reply(f"Status updates OFF {EMOTES.NWELIV}")
         mp.update_status = update
 
+    @commands.command(priority=7, aliases=("issues", "problem", "problems"))
+    async def issue(self, ctx: commands.Context):
+        """Display some info about known issues"""
+        await ctx.reply(
+            "- Radio playback is pausing/choppy\n"
+            "-# Try !pause then !resume after about 4s\n"
+            "- Music jittery/glitchy\n"
+            "-# Surprisingly, in most cases it's Discord's fault. Try deafen/undeafen or reconnecting to the VC. If it's the bot, try !reconnect\n"
+            "- Bot responds that it needs to be in VC, while it sits in VC\n"
+            "-# Try !reconnect. If it's not in VC or claims that it is not, try !karaokehere\n"
+            "- How do I force the bot out of VC?\n"
+            "-# Timeout is the easiest way\n"
+            "- No volume on next song?\n"
+            "-# Try skipping it using !skip\n"
+            "- Other issues with playback\n"
+            "-# Try resetting the bot with !reconnect\n"
+            "- No sound no matter what\n"
+            "-# There is a known Discord issue where audio is just not being delivered to people\n"
+            "-# Empty the VC (including the bot via timeout or by moving it to a different VC) and reconnect after a second or so\n"
+        )
+
     @commands.command(hidden=True)
     @commands.is_owner()
     async def status(self, ctx: commands.Context):
