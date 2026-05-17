@@ -1,5 +1,3 @@
-# Channels that the commands unrelated to VC are allowed in
-ALLOWED_CHANNELS = (0,)
 # Max songs cached, since we use double cache, with requested songs it will be 6
 # (3 in random queue and 3 in request queue, assuming there is 3 or more songs requested)
 MAX_CACHE = 3
@@ -17,6 +15,7 @@ SEARCH_API = "https://api.neurokaraoke.com/api/songs"
 IMAGES_URL = "https://images.neurokaraoke.com"
 COVER_ARTITS = "https://api.neurokaraoke.com/api/filters/cover-artists?page=0&pageSize=50"
 PLAYLIST_API = "https://api.neurokaraoke.com/api/playlist/"
+ARTIST_API = "https://api.neurokaraoke.com/api/artist/"
 SETLISTS_API = "https://api.neurokaraoke.com/api/playlists?startIndex=0&pageSize=1000&search=&sortBy=&sortDescending=False&isSetlist=True&year=0"
 PLAYLIST_URL = "https://www.evilkaraoke.com/playlist/"
 RADIO21_URL = "https://radio.twinskaraoke.com/listen/neuro_21/radio.ogg"
