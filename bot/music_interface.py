@@ -510,7 +510,7 @@ class MusicCog(commands.Cog):
     @commands.command()
     @cmd_verify()
     async def radio(self, ctx: commands.Context, radio="21"):
-        """Request radio playback, avaible options: [Radio21, SwarmFM]"""
+        """Request radio playback, avaible options: [Radio21]"""
         mp = self.get_music_player(ctx)
         if radio.lower() in ("21", "radio21", "neuro_21"):
             radio_type = player.RadioType.Radio21
