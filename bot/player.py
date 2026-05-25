@@ -470,7 +470,7 @@ class EagerPCMSource(PlaybackSource):
 
     def seek(self, seconds: float):
         """Move the internal pointer to a specific second."""
-        self.buffer.seek(int(seconds * 192000))
+        self.buffer.seek(int(seconds * self.BYTES_PER_SECOND))
 
     def duration(self) -> int:
         return self.size() // self.BYTES_PER_SECOND
@@ -530,7 +530,7 @@ class Song:
 
         return self.song_info.get("duration")
 
-    def remaning(self) -> int | None:
+    def remaining(self) -> int | None:
         return self.playback.remaining() if self.has_playback() else None
 
     def download(self):
@@ -581,29 +581,32 @@ class Song:
         return original_str
 
     def get_cover_art(self, download_animated=False) -> str | discord.File | None:
-        if self.song_info.get("coverArt") and self.song_info["coverArt"].get("absolutePath"):
-            image_url = IMAGES_URL
-            image_url += self.song_info["coverArt"]["absolutePath"]
-            image_url += "/width=900,height=900,quality=90,fit=crop,gravity=auto"
-            if not download_animated or self.song_info["coverArt"]["contentType"] != "image/webp":
-                return image_url
-            else:
+        coverArt = self.song_info.get("coverArt")
+        if not coverArt:
+            return None
+        absolutePath = coverArt.get("absolutePath")
+        if not absolutePath:
+            return None
+        image_url = IMAGES_URL + absolutePath
+        if download_animated and coverArt.get("contentType", "") == "image/webp":
+            image_data = fetch_json_data(image_url + "/f=json")
+            if image_data and image_data.get("frames"):
+                image_url += "/quality=80"
                 response = requests.get(image_url, timeout=5)
-                if response.status_code != 200:
-                    return image_url
-                else:
+                if response.status_code == 200:
                     with io.BytesIO(response.content) as image_binary:
                         discord_file = discord.File(fp=image_binary, filename="attachment.gif")
                         return discord_file
 
-        return None
+        image_url += "/quality=90"
+        return image_url
 
 
 class RadioSong(Song):
     def __init__(self, json_data, requested_by=None):
         super().__init__(json_data, requested_by)
 
-    def remaning(self):
+    def remaining(self):
         return 0
 
     def download(self):
@@ -671,7 +674,7 @@ class Radio21(Song):
         radio_json = self.get_data()
         return "Radio21: " + radio_json.get("now_playing", {}).get("song", {}).get("text", "")
 
-    def remaning(self) -> int | None:
+    def remaining(self) -> int | None:
         radio_json = fetch_json_data(RADIO21_SONGDATA)
         if not radio_json:
             return None
@@ -712,7 +715,7 @@ class MusicPlayer:
             if song_duration is None:
                 return None
             duration += song_duration + PAUSE_DURATION
-        duration += PAUSE_DURATION + self.current_song.remaning() or 0
+        duration += PAUSE_DURATION + self.current_song.remaining() or 0
         return duration
 
     def load_next_song(self):

@@ -1,3 +1,4 @@
+import weakref
 import discord
 from discord.ext import commands, tasks
 import discord.ui
@@ -204,7 +205,7 @@ class MusicCog(commands.Cog):
             footer = None
             song_remaining = None
         else:
-            song_remaining = current_song.remaning()
+            song_remaining = current_song.remaining()
             if song_remaining is None:
                 await ctx.reply(f"Something went wrong {EMOTES.SILLY}")
                 log.error(f"No playback for the current song!")
@@ -231,16 +232,28 @@ class MusicCog(commands.Cog):
             case CoverBy.Evil:
                 emote_str = EMOTES.EVILJAM
 
-        msg = await ctx.reply(f"Playing right now {emote_str}", embed=embed, file=discord_file)
+        try:
+            msg = await ctx.reply(f"Playing right now {emote_str}", embed=embed, file=discord_file)
+        except discord.errors.HTTPException as e:
+            if e.code == 40005:
+                msg = await ctx.reply(f"Playing right now {emote_str}", embed=embed)
+            else:
+                raise
+
         if song_remaining is None:
             return
-        symbol = embed.description.rfind("❍")
+        symbol = embed.description.rfind("🔘")
         if symbol == -1:
             return
-        self.bot.loop.create_task(self.update_embed(mp.current_song, msg, embed, symbol))
+        song_ref = weakref.ref(mp.current_song)
+        self.bot.loop.create_task(self.update_embed(song_ref, msg, embed, symbol))
 
     async def update_embed(
-        self, song: player.Song, msg: discord.Message, embed: discord.Embed, symbol: int
+        self,
+        song_ref: weakref.ReferenceType[player.Song],
+        msg: discord.Message,
+        embed: discord.Embed,
+        symbol: int,
     ):
         line_start = embed.description.rfind("\n", 0, symbol)
         if line_start == -1:
@@ -249,16 +262,21 @@ class MusicCog(commands.Cog):
         if line_end == -1 or symbol > line_end:
             return
         description_end = embed.description[line_end + 1 :]
-        duration = song.duration
+        duration = song_ref().duration
         counter = 0
         while True:
-            await asyncio.sleep(2)
-            remaining = song.remaning()
+            await asyncio.sleep(1.8)
+            if (song := song_ref()) is not None:
+                remaining = song.remaining()
+                song = None
+            else:
+                return
+
             if remaining is None:
                 return
             pminutes, pseconds = divmod(duration - remaining, 60)
             seg = (remaining * 10) // duration
-            embed.description = f"{embed.description[:line_start]}\n-# {pminutes}:{pseconds:02} {'▬'*(10-seg)}❍{'▬'*seg}{description_end}"
+            embed.description = f"{embed.description[:line_start]}\n`{pminutes}:{pseconds:02} {'▬'*(10-seg)}🔘{'▬'*seg}{description_end}"
             try:
                 await msg.edit(embed=embed)
             except discord.NotFound:
@@ -288,7 +306,7 @@ class MusicCog(commands.Cog):
             requested_by = ""
         else:
             requested_by = next_song.requested_by or self.bot.user.name
-        song_remaining = mp.current_song.remaning()
+        song_remaining = mp.current_song.remaining()
         if song_remaining is None:
             await ctx.reply(f"Something went wrong {EMOTES.SILLY}")
             log.error("MusicPlayer: No playback for the current song")
@@ -311,7 +329,13 @@ class MusicCog(commands.Cog):
                 emote_str = EMOTES.NEUROJAM
             case CoverBy.Evil:
                 emote_str = EMOTES.EVILJAM
-        await ctx.reply(f"Next song: {emote_str}", embed=embed, file=discord_file)
+        try:
+            await ctx.reply(f"Next song: {emote_str}", embed=embed, file=discord_file)
+        except discord.errors.HTTPException as e:
+            if e.code == 40005:
+                await ctx.reply(f"Next song: {emote_str}", embed=embed)
+            else:
+                raise
 
     @commands.command(priority=5)
     @cmd_verify()
@@ -410,8 +434,13 @@ class MusicCog(commands.Cog):
                         pass
 
             view.on_timeout = on_view_timeout
-
-        message = await ctx.reply(embed=embed, view=view, file=discord_file)
+        try:
+            message = await ctx.reply(embed=embed, view=view, file=discord_file)
+        except discord.errors.HTTPException as e:
+            if e.code == 40005:
+                message = await ctx.reply(embed=embed, view=view)
+            else:
+                raise
         if view:
             view.message = message
 
@@ -600,7 +629,9 @@ class MusicCog(commands.Cog):
 
         mp.apply_effects_board()
         try:
-            log.info(f"play_current: Starting playback '{mp.current_song.song_name()}'")
+            log.info(
+                f"play_current: Starting playback '{mp.current_song.song_name()}' in {vc.guild.name}/{vc.channel.name}"
+            )
             set_status_lambda = lambda: self.update_status(vc.guild.id)
             mp.current_song.playback.start(set_status_lambda)
             vc.play(
@@ -612,12 +643,18 @@ class MusicCog(commands.Cog):
             if start_paused:
                 vc.pause()
         except Exception as e:
+            if "Not connected to voice" in str(e):
+                log.error("play_current: Bot not connected to VC?")
+                await vc.guild.voice_client.disconnect(force=True)
+                return
             cs = mp.current_song
-            playback_size = cs.playback.size() if cs.has_playback() else None
+            playback_size = cs.playback.size() if cs and cs.has_playback() else None
             log.error(
-                f"play_current: could not start the playback error: ({e}) Playback size: {playback_size} Song data:"
+                f"play_current: could not start the playback error: ({e}) Playback size: {playback_size} Song data:",
+                exc_info=e,
             )
-            log.error(cs.dump_json())
+            if cs:
+                log.error(cs.dump_json())
             self.playback_end(vc, None)
         else:
             if mp.update_status:
@@ -628,7 +665,7 @@ class MusicCog(commands.Cog):
 
     def playback_end(self, vc: discord.VoiceClient, error):
         if error and not isinstance(error, str):
-            log.error(f"Error during playback: {error}", exc_info=error)
+            log.error(f"Error during playback: {error}, server: {vc.guild.name}", exc_info=error)
 
         asyncio.run_coroutine_threadsafe(self.next_song(vc.guild.id, error is None), self.bot.loop)
 
@@ -700,9 +737,9 @@ class MusicCog(commands.Cog):
             description += f"\n\nStream date: {date}"
         if remaining and duration != 0:
             pminutes, pseconds = divmod(duration - remaining, 60)
-            seg = (remaining * 10) // duration
+            seg = int((remaining * 10) // duration)
             description += (
-                f"\n-# {pminutes}:{pseconds:02} {'▬'*(10-seg)}❍{'▬'*seg} {minutes}:{seconds:02}"
+                f"\n`{pminutes}:{pseconds:02} {'▬'*(10-seg)}🔘{'▬'*seg} {minutes}:{seconds:02}`"
             )
             if play_count:
                 description += f"\n{play_count} plays"
