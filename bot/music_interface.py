@@ -210,7 +210,7 @@ class MusicCog(commands.Cog):
                 await ctx.reply(f"Something went wrong {EMOTES.SILLY}")
                 log.error(f"No playback for the current song!")
                 return
-            song_end = int(time.time()) + song_remaining
+            song_end = int(time.time() + song_remaining)
             requested_by = current_song.requested_by or self.bot.user.name
             footer = f'Requested by "{requested_by}"'
             note = f"Ends <t:{song_end}:R>"
@@ -274,8 +274,8 @@ class MusicCog(commands.Cog):
 
             if remaining is None:
                 return
-            pminutes, pseconds = divmod(duration - remaining, 60)
-            seg = (remaining * 10) // duration
+            pminutes, pseconds = divmod(round(duration - remaining), 60)
+            seg = int((remaining * 10) / duration)
             embed.description = f"{embed.description[:line_start]}\n`{pminutes}:{pseconds:02} {'▬'*(10-seg)}🔘{'▬'*seg}{description_end}"
             try:
                 await msg.edit(embed=embed)
@@ -311,7 +311,7 @@ class MusicCog(commands.Cog):
             await ctx.reply(f"Something went wrong {EMOTES.SILLY}")
             log.error("MusicPlayer: No playback for the current song")
             return
-        song_end = int(time.time()) + song_remaining + PAUSE_DURATION
+        song_end = int(time.time() + song_remaining) + PAUSE_DURATION
         footer = f'Requested by "{requested_by}"'
         note = f"Playing <t:{song_end}:R>"
         if mp.is_paused():
@@ -711,7 +711,7 @@ class MusicCog(commands.Cog):
         if date:
             date = datetime.datetime.fromisoformat(date).strftime("%B %d, %Y")
         duration = song.duration or 0
-        minutes, seconds = divmod(duration, 60)
+        minutes, seconds = divmod(round(duration), 60)
         song_url = song.get_url()
         cover_str = song.cover_artists
         cover_by = parse_cover_by(cover_str)
@@ -736,8 +736,8 @@ class MusicCog(commands.Cog):
         if date:
             description += f"\n\nStream date: {date}"
         if remaining and duration != 0:
-            pminutes, pseconds = divmod(duration - remaining, 60)
-            seg = int((remaining * 10) // duration)
+            pminutes, pseconds = divmod(round(duration - remaining), 60)
+            seg = int((remaining * 10) / duration)
             description += (
                 f"\n`{pminutes}:{pseconds:02} {'▬'*(10-seg)}🔘{'▬'*seg} {minutes}:{seconds:02}`"
             )

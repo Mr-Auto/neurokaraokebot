@@ -54,6 +54,7 @@ class PlaybackSource(discord.AudioSource):
     SAMPLES_PER_20MS = int(0.02 * SAMPLE_RATE)
     BYTES_PER_SECOND = SAMPLE_RATE * 2 * (16 // 8)  # 48KHz, 2 channels, 16bit depth
     BYTES_PER_20MS = int(0.02 * BYTES_PER_SECOND)
+    start = None
 
     def __init__(self):
         self.paused = False
@@ -70,13 +71,13 @@ class PlaybackSource(discord.AudioSource):
             self.log.info("Playback Resumed")
         self.paused = pause
 
-    def duration(self) -> int:
+    def duration(self) -> float:
         raise NotImplementedError
 
     def size(self) -> int:
         raise NotImplementedError
 
-    def remaining(self) -> int:
+    def remaining(self) -> float:
         raise NotImplementedError
 
     def seek(self, seconds: float):
@@ -413,7 +414,7 @@ class EagerPCMSource(PlaybackSource):
     def __init__(self, url: str):
         super().__init__()
         self.log = ClassLogger(log, self)
-        self.log.info(f"Fetching and converting (ffmpeg) song data from '{url}'")
+        self.log.info(f"Fetching and converting (ffmpeg) song data to raw from '{url}'")
         command = [
             "ffmpeg",
             "-i",
@@ -439,6 +440,8 @@ class EagerPCMSource(PlaybackSource):
         if ffmpeg_log:
             self.log.error(f"ffmpeg returned: {ffmpeg_log}")
         self.buffer = io.BytesIO(raw_pcm_data)
+        if self.buffer.getbuffer().nbytes < 10000:
+            raise RuntimeError(f"{RawPCMSource.__name__}: Got less then 10KB")
 
     def read(self):
         """Discord calls this every 20ms to get the next chunk of audio."""
@@ -472,16 +475,16 @@ class EagerPCMSource(PlaybackSource):
         """Move the internal pointer to a specific second."""
         self.buffer.seek(int(seconds * self.BYTES_PER_SECOND))
 
-    def duration(self) -> int:
-        return self.size() // self.BYTES_PER_SECOND
+    def duration(self) -> float:
+        return self.size() / self.BYTES_PER_SECOND
 
     def size(self) -> int:
         """Size of the internal buffer/container, mostly for debug"""
         return self.buffer.getbuffer().nbytes
 
-    def remaining(self) -> int:
+    def remaining(self) -> float:
         remaining_bytes = self.size() - self.buffer.tell()
-        return remaining_bytes // self.BYTES_PER_SECOND
+        return remaining_bytes / self.BYTES_PER_SECOND
 
     def close(self):
         self.buffer.close()
@@ -521,7 +524,7 @@ class Song:
             return None
 
     @property
-    def duration(self) -> int | None:
+    def duration(self) -> float | None:
         if self.has_playback():
             try:
                 return self.playback.duration()
@@ -530,7 +533,7 @@ class Song:
 
         return self.song_info.get("duration")
 
-    def remaining(self) -> int | None:
+    def remaining(self) -> float | None:
         return self.playback.remaining() if self.has_playback() else None
 
     def download(self):
@@ -711,12 +714,12 @@ class MusicPlayer:
             return None
 
         for song in self.requests_cache:
-            song_duration = song.song_info.get("duration")
+            song_duration = song.duration()
             if song_duration is None:
                 return None
             duration += song_duration + PAUSE_DURATION
         duration += PAUSE_DURATION + self.current_song.remaining() or 0
-        return duration
+        return round(duration)
 
     def load_next_song(self):
         if self.current_song.has_playback():
