@@ -591,15 +591,13 @@ class Song:
         if not absolutePath:
             return None
         image_url = IMAGES_URL + absolutePath
-        if download_animated and coverArt.get("contentType", "") == "image/webp":
-            image_data = fetch_json_data(image_url + "/f=json")
-            if image_data and image_data.get("frames"):
-                image_url += "/quality=80"
-                response = requests.get(image_url, timeout=5)
-                if response.status_code == 200:
-                    with io.BytesIO(response.content) as image_binary:
-                        discord_file = discord.File(fp=image_binary, filename="attachment.gif")
-                        return discord_file
+        if download_animated and coverArt.get("isAnimated", False):
+            image_url += "/quality=80"
+            response = requests.get(image_url, timeout=8)
+            if response.status_code == 200:
+                with io.BytesIO(response.content) as image_binary:
+                    discord_file = discord.File(fp=image_binary, filename="attachment.gif")
+                    return discord_file
 
         image_url += "/quality=90"
         return image_url
