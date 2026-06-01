@@ -18,7 +18,7 @@ class MyBot(commands.Bot):
     def __init__(self):
         intents = Intents(guilds=True, message_content=True, voice_states=True, guild_messages=True)
         activity = Activity(
-            name="Playing songs 🎵",
+            name="67",
             type=ActivityType.custom,
             state="Playing songs 🎵",
             status_display_type=StatusDisplayType.state,
@@ -69,7 +69,7 @@ class MyBot(commands.Bot):
             return
 
         if isinstance(error, NotAllowedError):
-            await ctx.reply(f"❌ {error}", delete_after=5)
+            await ctx.reply(f"❌ {error}", delete_after=10)
             return
 
         log.error(f"on_command_error: '!{ctx.command}': ", exc_info=error)

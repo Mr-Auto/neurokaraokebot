@@ -718,7 +718,7 @@ class MusicPlayer:
             if song_duration is None:
                 return None
             duration += song_duration + PAUSE_DURATION
-        duration += PAUSE_DURATION + self.current_song.remaining() or 0
+        duration += PAUSE_DURATION + (self.current_song.remaining() or 0)
         return round(duration)
 
     def load_next_song(self):

@@ -186,6 +186,10 @@ class MusicCog(commands.Cog):
         """Skip current song"""
         next_song = self.get_music_player(ctx).get_next_song()
         vc = ctx.voice_client
+        bucket = self.song._buckets.get_bucket(ctx.message)
+        bucket.reset()
+        bucket = self.nextsong._buckets.get_bucket(ctx.message)
+        bucket.reset()
         if not vc.is_playing() and not vc.is_paused():
             log.warning("Skip: no current playback?")
             mp = self.get_music_player(ctx)
@@ -206,27 +210,34 @@ class MusicCog(commands.Cog):
         """Check current song"""
         mp = self.get_music_player(ctx)
         current_song = mp.current_song
+        radio_name = None
         if isinstance(current_song, player.Radio21):
             current_song = current_song.get_song()
-            note = None
-            footer = None
-            song_remaining = None
-        else:
-            song_remaining = current_song.remaining()
-            if song_remaining is None:
-                await ctx.reply(f"Something went wrong {EMOTES.SILLY}")
-                log.error(f"No playback for the current song!")
-                return
+            radio_name = "Radio21"
+        song_remaining = current_song.remaining()
+        if song_remaining is None and radio_name is None:
+            await ctx.reply(f"Something went wrong {EMOTES.SILLY}")
+            log.error(f"song command: No playback for the current song! {radio_name or ''}")
+            return
+        if song_remaining:
             bucket = ctx.command._buckets.get_bucket(ctx.message)
             bucket.per = song_remaining / 2
             song_end = int(time.time() + song_remaining)
-            requested_by = current_song.requested_by or self.bot.user.name
-            footer = f'Requested by "{requested_by}"'
             note = f"Ends <t:{song_end}:R>"
-
+        else:
+            note = f"Ends `Unknown` {EMOTES.SILLY}"
+        requested_by = current_song.requested_by
+        if radio_name:
+            if requested_by == "True":
+                requested_by = "Yes"
+            else:
+                requested_by = "No"
+            footer = f"{radio_name}         Requested: {requested_by}"
+        else:
+            requested_by = requested_by or self.bot.user.name
+            footer = f'Requested by "{requested_by}"'
         if mp.is_paused():
             note = f"Ends `PAUSED` {EMOTES.PAUSE}"
-            song_remaining = None
         embed, discord_file = self.get_song_embed(current_song, note, footer, song_remaining)
         cover_str = current_song.cover_artists
         cover_by = parse_cover_by(cover_str)
@@ -240,7 +251,6 @@ class MusicCog(commands.Cog):
                 emote_str = EMOTES.NEUROJAM
             case CoverBy.Evil:
                 emote_str = EMOTES.EVILJAM
-
         try:
             msg = await ctx.reply(f"Playing right now {emote_str}", embed=embed, file=discord_file)
         except discord.errors.HTTPException as e:
@@ -248,13 +258,12 @@ class MusicCog(commands.Cog):
                 msg = await ctx.reply(f"Playing right now {emote_str}", embed=embed)
             else:
                 raise
-
         if song_remaining is None:
             return
         symbol = embed.description.rfind("🔘")
         if symbol == -1:
             return
-        song_ref = weakref.ref(mp.current_song)
+        song_ref = weakref.ref(current_song)
         self.bot.loop.create_task(self.update_embed(song_ref, msg, embed, symbol))
 
     async def update_embed(
@@ -303,28 +312,39 @@ class MusicCog(commands.Cog):
         """Check the next song"""
         next_song = None
         mp = self.get_music_player(ctx)
+        radio_name = None
         if isinstance(mp.current_song, player.Radio21):
             next_song = mp.current_song.get_song("playing_next")
+            radio_name = "Radio21"
+            song_remaining = mp.current_song.get_song("now_playing").remaining()
         else:
             next_song = mp.get_next_song()
-
+            song_remaining = mp.current_song.remaining()
         if not next_song:
             await ctx.reply(f"No song's in the queue? {EMOTES.SILLY}")
-            log.info(f"nextsong: No songs in the queue WTF?!")
+            log.error(f"nextsong: No songs in the queue WTF?!")
             return
-        if isinstance(mp.current_song, player.Radio21):
-            requested_by = ""
-        else:
-            requested_by = next_song.requested_by or self.bot.user.name
-        song_remaining = mp.current_song.remaining()
-        if song_remaining is None:
+        if song_remaining is None and radio_name is None:
             await ctx.reply(f"Something went wrong {EMOTES.SILLY}")
             log.error("MusicPlayer: No playback for the current song")
             return
-        self.nextsong.cooldown.per = song_remaining / 2
-        song_end = int(time.time() + song_remaining) + PAUSE_DURATION
-        footer = f'Requested by "{requested_by}"'
-        note = f"Playing <t:{song_end}:R>"
+        if song_remaining:
+            bucket = ctx.command._buckets.get_bucket(ctx.message)
+            bucket.per = song_remaining / 2
+            song_end = int(time.time() + song_remaining) + PAUSE_DURATION
+            note = f"Playing <t:{song_end}:R>"
+        else:
+            note = f"Ends `Unknown` {EMOTES.SILLY}"
+        requested_by = next_song.requested_by
+        if radio_name:
+            if requested_by == "True":
+                requested_by = "Yes"
+            else:
+                requested_by = "No"
+            footer = f"{radio_name}         Requested: {requested_by}"
+        else:
+            requested_by = requested_by or self.bot.user.name
+            footer = f'Requested by "{requested_by}"'
         if mp.is_paused():
             note = f"Playing `PAUSED` {EMOTES.PAUSE}"
         embed, discord_file = self.get_song_embed(next_song, note, footer)
@@ -743,9 +763,9 @@ class MusicCog(commands.Cog):
         description = ""
         if cover_str:
             description = f"Cover by {cover_str}\n\n"
-        description += f"Original by {original_by}"
+        description += f"Original by {original_by}\n\n"
         if date:
-            description += f"\n\nStream date: {date}"
+            description += f"Stream date: {date}"
         if remaining and duration != 0:
             pminutes, pseconds = divmod(round(duration - remaining), 60)
             seg = int((remaining * 10) / duration)
