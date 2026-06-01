@@ -94,6 +94,7 @@ class MusicCog(commands.Cog):
         self.bot = bot
         self.music_players: dict[int, player.MusicPlayer] = {}
         self.check_alone_status.start()
+        self.voice_statuses = {}
 
     async def cog_unload(self):
         self.check_alone_status.cancel()
@@ -131,8 +132,7 @@ class MusicCog(commands.Cog):
             vc.pause()
             await ctx.reply(f"Paused ⏸️ {EMOTES.PAUSE}")
             if mp.update_status:
-                status = f"{EMOTES.PAUSE} {mp.current_song.song_name()}"
-                await ctx.channel.edit(status=status)
+                await self.set_voice_status(vc.channel, mp.current_song.song_name(), True)
 
     @commands.command(priority=2, aliases=("▶️",))
     @cmd_verify()
@@ -149,7 +149,7 @@ class MusicCog(commands.Cog):
             vc.resume()
             await ctx.reply(f"Resumed ▶️ {EMOTES.JAM}")
             if mp.update_status:
-                await ctx.channel.edit(status=mp.current_song.song_name())
+                await self.set_voice_status(vc.channel, mp.current_song.song_name(), False)
 
     @commands.command()
     @commands.cooldown(1, 10, commands.BucketType.guild)
@@ -263,7 +263,10 @@ class MusicCog(commands.Cog):
         symbol = embed.description.rfind("🔘")
         if symbol == -1:
             return
-        song_ref = weakref.ref(current_song)
+        if radio_name is None:
+            song_ref = weakref.ref(current_song)
+        else:
+            song_ref = lambda: current_song
         self.bot.loop.create_task(self.update_embed(song_ref, msg, embed, symbol))
 
     async def update_embed(
@@ -483,10 +486,7 @@ class MusicCog(commands.Cog):
         if mp.update_status != update:
             if update:
                 await ctx.reply(f"Status updates back ON {EMOTES.OK}")
-                song_name = mp.current_song.song_name()
-                if mp.is_paused():
-                    song_name = f"{EMOTES.PAUSE} {song_name}"
-                await ctx.channel.edit(status=song_name)
+                await self.set_voice_status(ctx.channel, mp.current_song.song_name(), mp.is_paused())
             else:
                 await ctx.reply(f"Status updates OFF {EMOTES.NWELIV}")
         mp.update_status = update
@@ -520,16 +520,19 @@ class MusicCog(commands.Cog):
     @cmd_verify()
     async def playlist(self, ctx: commands.Context, url: str):
         """Open playlist from neurokaraoke (full url or just id), allowing you to request songs from it"""
-        playlist_id = url.strip("/").rsplit("/", 1)[-1]
-        if len(playlist_id) != 36:
-            await ctx.reply(f"Invalid playlist link or id {EMOTES.SILLY}")
-            return
+        artist_playlist = False
+        if url.lower() == "lofi":
+            playlist_id = "c33f0038-3abc-4343-9ab9-f597581ce279"
+        else:
+            playlist_id = url.strip("/").rsplit("/", 1)[-1]
+            if len(playlist_id) != 36:
+                await ctx.reply(f"Invalid playlist link or id {EMOTES.SILLY}")
+                return
         artist_playlist = "/artist/" in url
         if not artist_playlist:
             response = requests.get(
                 PLAYLIST_API + playlist_id, headers={"x-guest-id": "67"}, timeout=8
             )
-
             if response.status_code == 204 and len(url) < 40:
                 artist_playlist = True
             elif response.status_code != 200:
@@ -603,17 +606,37 @@ class MusicCog(commands.Cog):
     def get_music_player(self, ctx: commands.Context) -> player.MusicPlayer:
         return self.music_players.get(ctx.guild.id)
 
-    def update_status(self, guild_id: int):
+    async def set_voice_status(self, channel: discord.VoiceChannel, text: str, is_paused: bool):
+        try:
+            self.voice_statuses[channel.guild.id] = text
+            if is_paused:
+                new_voice_status = f"{EMOTES.PAUSE} {text}"
+            else:
+                new_voice_status = text
+            await channel.edit(status=new_voice_status)
+        except:
+            log.exception("set_voice_status exception:")
+
+    async def radio_update_status(self, guild_id: int):
         mp = self.music_players.get(guild_id)
         if mp and mp.update_status:
             guild = self.bot.get_guild(guild_id)
             if guild is not None:
-                song_name = mp.current_song.song_name()
-                if mp.is_paused():
-                    song_name = f"{EMOTES.PAUSE} {song_name}"
-                asyncio.run_coroutine_threadsafe(
-                    guild.voice_client.channel.edit(status=song_name), self.bot.loop
-                )
+                retry_count = 0
+                try:
+                    while True:
+                        mp.current_song.get_data(True)
+                        song_name = mp.current_song.song_name()
+                        if self.voice_statuses.get(guild_id, "") != song_name:
+                            voice_channel = guild.voice_client.channel
+                            await self.set_voice_status(voice_channel, song_name, mp.is_paused())
+                            return
+                        retry_count += 1
+                        if retry_count > 5:
+                            return
+                        await asyncio.sleep(3)
+                except:
+                    log.exception("exception during status update")
 
     async def start(self, ctx: commands.Context):
         vc = ctx.voice_client
@@ -658,13 +681,15 @@ class MusicCog(commands.Cog):
                 self.playback_end(vc, "error")
                 return
 
-        mp.apply_effects_board()
         try:
             log.info(
                 f"play_current: Starting playback '{mp.current_song.song_name()}' in {vc.guild.name}/{vc.channel.name}"
             )
-            set_status_lambda = lambda: self.update_status(vc.guild.id)
-            mp.current_song.playback.start(set_status_lambda)
+            if mp.current_song.playback.start:
+                set_status_lambda = lambda: asyncio.run_coroutine_threadsafe(
+                    self.radio_update_status(vc.guild.id), self.bot.loop
+                )
+                mp.current_song.playback.start(set_status_lambda)
             vc.play(
                 mp.current_song.playback,
                 bitrate=192,
@@ -690,9 +715,7 @@ class MusicCog(commands.Cog):
         else:
             if mp.update_status:
                 song_name = mp.current_song.song_name()
-                if start_paused:
-                    song_name = f"{EMOTES.PAUSE} {song_name}"
-                await vc.channel.edit(status=song_name)
+                await self.set_voice_status(vc.channel, song_name, start_paused)
 
     def playback_end(self, vc: discord.VoiceClient, error):
         if error and not isinstance(error, str):
@@ -913,8 +936,7 @@ class MusicCog(commands.Cog):
                     mp.pause()
                     stats.servers.stopped_playing(guild.id)
                     if mp.update_status:
-                        status = f"{EMOTES.PAUSE} {mp.current_song.song_name()}"
-                        await vc.channel.edit(status=status)
+                        await self.set_voice_status(vc.channel, mp.current_song.song_name(), True)
                     await vc.channel.send(f"No one's listening {EMOTES.SAD}\nPaused ⏸️")
 
     @check_alone_status.before_loop

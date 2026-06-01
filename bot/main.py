@@ -8,7 +8,6 @@ from discord.ext import commands
 import stats
 from music_interface import MusicCog, NotAllowedError
 from utility_interface import UtilityCog
-from modifiers_interface import ModifiersCog
 from config import EMOTES
 
 log = logging.getLogger()
@@ -33,7 +32,6 @@ class MyBot(commands.Bot):
     async def setup_hook(self):
         await self.add_cog(MusicCog(self))
         await self.add_cog(UtilityCog(self))
-        await self.add_cog(ModifiersCog())
         self.before_invoke(self.before_command_invoke)
 
     async def on_ready(self):
