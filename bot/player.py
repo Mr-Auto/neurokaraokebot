@@ -406,7 +406,7 @@ class RAMBufferSource(BufferedOpusSource):
         except (StopIteration, av.error.EOFError, av.error.ExitError):
             n_samples_left = audio_fifo.samples
             if n_samples_left > 0:
-                this.log.warning("adding padding")
+                this.log.debug("adding padding")
                 padding = av.AudioFrame(
                     samples=this.SAMPLES_PER_20MS - n_samples_left, format="s16", layout="stereo"
                 )
