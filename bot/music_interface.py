@@ -100,6 +100,7 @@ class MusicCog(commands.Cog):
         self.music_players = {}
 
     @commands.command(priority=1, aliases=("here",))
+    @commands.cooldown(1, 12, commands.BucketType.guild)
     async def karaokehere(self, ctx: commands.Context):
         """Invite bot to VC"""
         if ctx.voice_client:
@@ -109,15 +110,18 @@ class MusicCog(commands.Cog):
             return
         channel = ctx.channel
         try:
-            await channel.connect(reconnect=False)
+            await channel.connect(reconnect=False, timeout=10)
             await ctx.reply(f"Starting Neuro Karaoke Playback in '{channel}' {EMOTES.HAPPY}")
             await self.start(ctx)
+        except TimeoutError:
+            await ctx.reply(f"Connection timeout {EMOTES.SAD}, try again in a minute or two")
         except:
             await ctx.reply(f"Something went wrong {EMOTES.SILLY}")
             raise
 
     @commands.command(priority=2, aliases=("⏸️",))
     @cmd_verify()
+    @commands.cooldown(1, 2, commands.BucketType.guild)
     async def pause(self, ctx: commands.Context):
         vc = ctx.voice_client
         mp = self.get_music_player(ctx)
@@ -132,6 +136,7 @@ class MusicCog(commands.Cog):
 
     @commands.command(priority=2, aliases=("▶️",))
     @cmd_verify()
+    @commands.cooldown(1, 2, commands.BucketType.guild)
     async def resume(self, ctx: commands.Context):
         vc = ctx.voice_client
         mp = self.get_music_player(ctx)
@@ -147,6 +152,7 @@ class MusicCog(commands.Cog):
                 await ctx.channel.edit(status=mp.current_song.song_name())
 
     @commands.command()
+    @commands.cooldown(1, 10, commands.BucketType.guild)
     async def reconnect(self, ctx: commands.Context):
         """Reset the bot and reconnect to this VC (kills the queue)"""
         if not ctx.voice_client:
@@ -195,6 +201,7 @@ class MusicCog(commands.Cog):
 
     @commands.command(priority=6, aliases=("current", "currentsong"))
     @cmd_verify()
+    @commands.cooldown(1, 20, commands.BucketType.guild)
     async def song(self, ctx: commands.Context):
         """Check current song"""
         mp = self.get_music_player(ctx)
@@ -210,6 +217,8 @@ class MusicCog(commands.Cog):
                 await ctx.reply(f"Something went wrong {EMOTES.SILLY}")
                 log.error(f"No playback for the current song!")
                 return
+            bucket = ctx.command._buckets.get_bucket(ctx.message)
+            bucket.per = song_remaining / 2
             song_end = int(time.time() + song_remaining)
             requested_by = current_song.requested_by or self.bot.user.name
             footer = f'Requested by "{requested_by}"'
@@ -265,7 +274,7 @@ class MusicCog(commands.Cog):
         duration = song_ref().duration
         counter = 0
         while True:
-            await asyncio.sleep(1.8)
+            await asyncio.sleep(1.6)
             if (song := song_ref()) is not None:
                 remaining = song.remaining()
                 song = None
@@ -289,6 +298,7 @@ class MusicCog(commands.Cog):
 
     @commands.command(priority=6, aliases=("ns",))
     @cmd_verify()
+    @commands.cooldown(1, 20, commands.BucketType.guild)
     async def nextsong(self, ctx: commands.Context):
         """Check the next song"""
         next_song = None
@@ -311,6 +321,7 @@ class MusicCog(commands.Cog):
             await ctx.reply(f"Something went wrong {EMOTES.SILLY}")
             log.error("MusicPlayer: No playback for the current song")
             return
+        self.nextsong.cooldown.per = song_remaining / 2
         song_end = int(time.time() + song_remaining) + PAUSE_DURATION
         footer = f'Requested by "{requested_by}"'
         note = f"Playing <t:{song_end}:R>"

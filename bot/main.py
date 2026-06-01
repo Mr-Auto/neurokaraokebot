@@ -52,9 +52,12 @@ class MyBot(commands.Bot):
                 break
 
     async def on_command_error(self, ctx: commands.Context, error: commands.CommandError):
-        if isinstance(
-            error, (commands.CommandNotFound, commands.CheckFailure, commands.CommandOnCooldown)
-        ):
+        if isinstance(error, (commands.CommandNotFound, commands.CheckFailure)):
+            return
+
+        if isinstance(error, commands.CommandOnCooldown):
+            time_left = round(error.retry_after, 1)
+            await ctx.reply(f"⏳ Command under cooldown. {time_left}s")
             return
 
         if isinstance(error, commands.MissingRequiredArgument):
