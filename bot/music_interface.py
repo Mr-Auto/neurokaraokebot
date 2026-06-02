@@ -703,6 +703,10 @@ class MusicCog(commands.Cog):
                 log.error("play_current: Bot not connected to VC?")
                 await vc.guild.voice_client.disconnect(force=True)
                 return
+            elif "Already playing audio" in str(e):
+                log.error("play_current: Already playing?")
+                await vc.guild.voice_client.disconnect(force=True)
+                return
             cs = mp.current_song
             playback_size = cs.playback.size() if cs and cs.has_playback() else None
             log.error(
