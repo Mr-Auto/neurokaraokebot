@@ -241,7 +241,7 @@ class UtilityCog(commands.Cog):
             message += "\n"
         await ctx.reply(message)
 
-    @commands.command(hidden=True, name="l-word")
+    @commands.command(hidden=True)
     @commands.is_owner()
     async def latency(self, ctx: commands.Context):
         latency = self.bot.latency * 1000
