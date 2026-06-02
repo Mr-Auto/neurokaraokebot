@@ -16,10 +16,17 @@ log = logging.getLogger()
 class MyBot(commands.Bot):
     def __init__(self):
         intents = Intents(guilds=True, message_content=True, voice_states=True, guild_messages=True)
+        status = "Playing songs 🎵"
+        try:
+            with open("data/activity_status.txt") as f:
+                status = f.read()
+            status = status.strip()
+        except:
+            pass
         activity = Activity(
             name="67",
             type=ActivityType.custom,
-            state="Playing songs 🎵",
+            state=status,
             status_display_type=StatusDisplayType.state,
         )
         super().__init__(

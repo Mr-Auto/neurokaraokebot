@@ -5,10 +5,11 @@ import sys
 import logging
 import asyncio
 from discord.ext import commands
+import requests
 
 import stats
 import player
-from config import EMOTES
+from config import EMOTES,RADIO21_SONGDATA
 
 log = logging.getLogger()
 
@@ -239,3 +240,70 @@ class UtilityCog(commands.Cog):
                 message += f" Playback paused:`{mp.is_paused()}`"
             message += "\n"
         await ctx.reply(message)
+
+    @commands.command(hidden=True, name="l-word")
+    @commands.is_owner()
+    async def latency(self, ctx: commands.Context):
+        latency = self.bot.latency * 1000
+        latency = f"{latency:.2f}ms"
+        try:
+            response = requests.get("https://api.neurokaraoke.com/healthz", timeout=20)
+        except:
+            neurokaraoke = "failed"
+        else:
+            response_time = response.elapsed.total_seconds() * 1000
+            neurokaraoke = f"`{response_time:.2f}ms` {response.content.decode()}"
+        await asyncio.sleep(1)
+        try:
+            response = requests.get(
+                "https://images.neurokaraoke.com/WxURxyML82UkE7gY-PiBKw/031c86f6-e113-405a-ae5b-3ada9bb7b900/quality=95",
+                timeout=20,
+            )
+        except:
+            neurokaraoke_images = "failed"
+        else:
+            response_time = response.elapsed.total_seconds() * 1000
+            neurokaraoke_images = f"`{response_time:.2f}ms`"
+        await asyncio.sleep(2)
+        try:
+            response = requests.get(
+                "https://storage.neurokaraoke.com/image/icon/evil_icon.webp", timeout=20
+            )
+        except:
+            neurokaraoke_storage = "failed"
+        else:
+            response_time = response.elapsed.total_seconds() * 1000
+            neurokaraoke_storage = f"`{response_time:.2f}ms`"
+        await asyncio.sleep(2)
+        try:
+            response = requests.get(RADIO21_SONGDATA, timeout=20)
+        except:
+            radio21 = "failed"
+        else:
+            response_time = response.elapsed.total_seconds() * 1000
+            is_online = response.json().get("is_online", "")
+            radio21 = f"`{response_time:.2f}ms` is_online: {is_online}"
+        await asyncio.sleep(2)
+
+        await ctx.reply(
+            f"Bot latency: {latency}\n"
+            "## Response times:\n"
+            f"- api.neurokaraoke: {neurokaraoke}\n"
+            f"- images.neurokaraoke: {neurokaraoke_images}\n"
+            f"- storage.neurokaraoke: {neurokaraoke_storage}\n"
+            f"- radio21 data: {radio21}\n"
+        )
+
+    @commands.command(hidden=True)
+    @commands.is_owner()
+    async def setstatus(self, ctx: commands.Context, *, status):
+        activity = discord.Activity(
+            name="67",
+            type=discord.ActivityType.custom,
+            state=status,
+            status_display_type=discord.StatusDisplayType.state,
+        )
+        await self.bot.change_presence(activity=activity)
+        with open("data/activity_status.txt", "w") as f:
+            f.write(status)
+        await ctx.reply(f"Updated activity text to: `{status}`, it may take a moment to take effect")
