@@ -305,7 +305,7 @@ class MusicCog(commands.Cog):
             if remaining <= 0:
                 return
             counter += 1
-            if counter > 145:
+            if counter > 1000:
                 return
 
     @commands.command(priority=6, aliases=("ns",))
