@@ -5,6 +5,8 @@ MAX_CACHE = 2
 PAUSE_AFTER = 2
 # Length of pause between songs (in seconds)
 PAUSE_DURATION = 3
+# Bitrate for the opus encoder (when applicable)
+OPUS_BITRATE = 128
 
 # API stuff, no need to edit
 RANDOM_API = "https://api.neurokaraoke.com/api/songs/random"

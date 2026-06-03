@@ -633,6 +633,7 @@ class MusicCog(commands.Cog):
                             return
                         retry_count += 1
                         if retry_count > 5:
+                            log.warning("was unable to update vc status for the radio")
                             return
                         await asyncio.sleep(3)
                 except:
@@ -670,16 +671,19 @@ class MusicCog(commands.Cog):
         mp = self.get_music_player(vc)
         if not mp.current_song.has_playback():
             await vc.channel.send(EMOTES.LOADING)
-            log.warning(
-                f"play_current: no playback for current song. Requested ({mp.current_song.requested_by is not None}) Attempting to download again"
-            )
-            mp.current_song.download()
+            if mp.refill_task is not None:
+                await mp.refill_task
             if not mp.current_song.has_playback():
-                log.error(
-                    f"play_current: could not download the song: {mp.current_song.dump_json()}"
+                log.warning(
+                    f"play_current: no playback for current song. Requested ({mp.current_song.requested_by is not None}) Attempting to download again"
                 )
-                self.playback_end(vc, "error")
-                return
+                mp.current_song.download()
+                if not mp.current_song.has_playback():
+                    log.error(
+                        f"play_current: could not download the song: {mp.current_song.dump_json()}"
+                    )
+                    self.playback_end(vc, None)
+                    return
 
         try:
             log.info(
@@ -690,15 +694,16 @@ class MusicCog(commands.Cog):
                     self.radio_update_status(vc.guild.id), self.bot.loop
                 )
                 mp.current_song.playback.start(set_status_lambda)
+
             vc.play(
                 mp.current_song.playback,
-                bitrate=192,
+                bitrate=OPUS_BITRATE,
                 signal_type="music",
                 after=lambda e: self.playback_end(vc, e),
             )
             if start_paused:
                 vc.pause()
-        except Exception as e:
+        except discord.ClientException as e:
             if "Not connected to voice" in str(e):
                 log.error("play_current: Bot not connected to VC?")
                 await vc.guild.voice_client.disconnect(force=True)
@@ -707,14 +712,12 @@ class MusicCog(commands.Cog):
                 log.error("play_current: Already playing?")
                 await vc.guild.voice_client.disconnect(force=True)
                 return
+        except Exception:
             cs = mp.current_song
-            playback_size = cs.playback.size() if cs and cs.has_playback() else None
-            log.error(
-                f"play_current: could not start the playback error: ({e}) Playback size: {playback_size} Song data:",
-                exc_info=e,
-            )
+            size = cs.playback.size() if cs and cs.has_playback() else None
+            log.exception(f"play_current: could not start the playback. Playback size: {size}")
             if cs:
-                log.error(cs.dump_json())
+                log.error(f"Song data:{cs.dump_json()}")
             self.playback_end(vc, None)
         else:
             if mp.update_status:
@@ -722,9 +725,8 @@ class MusicCog(commands.Cog):
                 await self.set_voice_status(vc.channel, song_name, start_paused)
 
     def playback_end(self, vc: discord.VoiceClient, error):
-        if error and not isinstance(error, str):
-            log.error(f"Error during playback: {error}, server: {vc.guild.name}", exc_info=error)
-
+        if error:
+            log.error(f"Error during playback: {error}, server: {vc.guild.name}")
         asyncio.run_coroutine_threadsafe(self.next_song(vc.guild.id, error is None), self.bot.loop)
 
     async def next_song(self, guild_id: int, success: bool):
@@ -746,6 +748,8 @@ class MusicCog(commands.Cog):
         # Force refill if no songs in cache (shouldn't really happen ever)
         if len(mp.requests_cache) == 0 and len(mp.cache) == 0:
             log.warning(f"next_song: forcing refill, server: {guild.name}[{guild_id}]")
+            if mp.refill_task is not None:
+                await mp.refill_task
             mp.refill(True)
         else:
             mp.refill()
