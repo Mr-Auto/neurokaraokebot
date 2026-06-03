@@ -86,20 +86,23 @@ class Song:
             opus_url = STORAGE_URL + self.song_info["opus"].strip("/")
         else:
             log.warning(f"Song: '{self.get_id()}' is missing opus!")
-            song_url = STORAGE_URL + self.song_info["absolutePath"].strip("/")
+        song_url = STORAGE_URL + self.song_info["absolutePath"].strip("/")
+
         try:
             if opus:
-                log.info(f"opus url: {opus_url}")
-                self.playback = DirectOpusStream(opus_url)
+                if MODE == 1:
+                    self.playback = DirectOpusStream(opus_url)
+                else:
+                    self.playback = RAMBufferOpusSource(opus_url)
         except Exception:
-            log.exception("Could not load opus stream, falling back to default source")
-            opus = None
+            log.exception("Could not load opus stream, falling back to non opus source")
 
-        if not opus:
-            if MODE == 1:
-                self.playback = RAMBufferSource(song_url)
-            else:
-                self.playback = RawPCMSource(song_url)
+        if MODE == 1:
+            self.playback = NonOpusStream(song_url)
+        else:
+            self.playback = RAMBufferSource(song_url)
+
+    # self.playback = RawPCMSource(song_url)
 
     def dump_json(self, indent=4) -> str:
         return json.dumps(self.song_info, indent=indent)
@@ -238,9 +241,6 @@ class Radio21(Song):
 
     def download(self):
         self.playback = DirectOpusStream(RADIO21_URL, True)
-
-    def has_playback(self):
-        return self.playback is not None
 
     def song_name(self) -> str:
         radio_json = self.get_data()

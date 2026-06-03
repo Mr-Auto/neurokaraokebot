@@ -190,18 +190,18 @@ class UtilityCog(commands.Cog):
     @commands.is_owner()
     async def mode(self, ctx: commands.Context, mode: str = None):
         if mode:
-            if mode.lower() == "lazy":
+            if mode.lower() == "stream":
                 player.MODE = 1
-            elif mode.lower() == "eager":
+            elif mode.lower() == "download":
                 player.MODE = 2
             else:
-                await ctx.reply(f"Wrong option [lazy or eager] {EMOTES.SILLY}")
+                await ctx.reply(f"Wrong option [stream or download] {EMOTES.SILLY}")
                 return
 
         if player.MODE == 1:
-            await ctx.reply(f"Current mode: `LazyPCMSource(pedalboard)` {EMOTES.LOADING}")
+            await ctx.reply(f"Current mode: `Stream` {EMOTES.LOADING}")
         else:
-            await ctx.reply(f"Current mode: `EagerPCMSource(ffmpeg)` {EMOTES.PAUSE}")
+            await ctx.reply(f"Current mode: `Download` {EMOTES.PAUSE}")
 
     @commands.command(priority=7, aliases=("issues", "problem", "problems"))
     async def issue(self, ctx: commands.Context):

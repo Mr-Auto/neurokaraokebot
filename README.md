@@ -59,13 +59,14 @@ Main branch is the latest version, releases are only used as backups
   *  **Command list** `!commands` same as the main one, list of all commands
   *  **Issues list** can be seen using `!issue` command, mostly advices on what to do when bot is not working correctly
 * **Admin** (only bot's owner)
-  * **Check/change current playback mode** `!mode [None/eager/lazy]`, the bot has two modes, `eager` and `lazy`, you may choose depending on your setup (default set in the `player.py`), the `eager` one will convert the song to a raw bytes, consuming more RAM but using very little processing power, `lazy` will keep songs in the original format and convert them on the fly (note: songs uploaded to neurokaraoke.com by users are kept in m4a format, not supported by the `lazy` backend pedalboard and will need additional conversion step before storing)
+  * **Check/change current playback mode** `!mode [None/stream/download]`, the bot has two modes, you may choose depending on your setup (default set in the `player.py`), the `stream` mode will download music in packets aka streaming it, `download` mode downloads the whole file and stores it in RAM, the second option has less complexity and should generally be less CPU demanding
   *  **Bot status** `!status` will display all the servers the bot is in plus additional information (has valid MusicPlayer, is in VC, is paused)
   *  **Debug emotes** `!emotes [group name]` will make the bot send all the emotes from given group, useful for overview and check if all the emotes are working/are in correct format
   *  **Stop the bot** `!exit` will kill the bot process completely (can be used as restart on a hosting platform that supports auto restart)
   *  **Restart** `!restart` will start new process of this bot and close the current one
   *  **Latency test** with `!latency` (takes few seconds)
   *  **Dump stats** `!dumpstats` will save all the stats to file. This is just emergency safety feature, stats are saved if bot is stopped using `!exit` or `!restart`
+  *  **Discord Activity** text can we set using `!setstatus [text]` command (the text on the user list / in user profile) 
 
 ---
 
@@ -81,7 +82,7 @@ Main branch is the latest version, releases are only used as backups
 ## ⚠️ Notes
 
 * This project is not affiliated with neurokaraoke.com
-* Availability of songs depends on the source website, bot does not cache songs longterm
+* Availability of songs depends on the source website, bot does not cache songs long term
 * `config.py` contains additional settings if needed
 * Make sure your bot has permission to:
 

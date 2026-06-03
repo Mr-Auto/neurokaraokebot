@@ -107,7 +107,6 @@ class BufferedOpusSource(PlaybackSource):
     def remaining(self) -> float | None:
         if self.duration_sec == 0 or self.time_base is None:
             return None
-
         time_passed = float(self.current_pts * self.time_base)
         return float(max(0, self.duration_sec - time_passed))
 
@@ -124,7 +123,6 @@ class DirectOpusStream(BufferedOpusSource):
         self.url = url
         self.reset = False
         self._thread_active = False
-
         if not radio:
             self._thread_active = True
             self_weak = weakref.ref(self)
@@ -153,21 +151,17 @@ class DirectOpusStream(BufferedOpusSource):
     def _run_loop(weak_self: weakref.ReferenceType["DirectOpusStream"]):
         initialised = False
         seek_to = None
+        reconnect = False
         error_count = 0
-        while True:
+        while True:  # reconnect loop
             this = weak_self()
-            if this is None or this.end:
+            if this is None:
                 return
-            if initialised:  # only for reconnecting
-                if not this.radio:
-                    try:
-                        last_packet = this.buffer[-1]
-                        seek_to = last_packet.pts
-                    except IndexError:
-                        pass
-                    if seek_to is None:
-                        seek_to = this.current_pts
+            if this.end:
+                this.finish_playback()
+                return
 
+            reconnect = initialised and not this.radio
             try:
                 with av.open(
                     this.url,
@@ -180,18 +174,23 @@ class DirectOpusStream(BufferedOpusSource):
                 ) as container:
                     audio_stream = container.streams.audio[0]
                     packet_generator = container.demux(audio_stream)
-                    if seek_to:
+                    if reconnect and seek_to is not None:
                         container.seek(seek_to, stream=audio_stream)
-                    this.time_base = audio_stream.time_base
+                    time_base = audio_stream.time_base
                     if not this.radio:
                         this.container_size = container.size
-                        if audio_stream.duration and this.time_base:
-                            this.duration_sec = float(audio_stream.duration * this.time_base)
+                        if audio_stream.duration and time_base:
+                            this.duration_sec = float(audio_stream.duration * time_base)
 
+                    if this.time_base is None:
+                        this.time_base = time_base
                     initialised = True
-                    while True:
+                    while True:  # main loop
                         this = weak_self()
-                        if this is None or this.end:
+                        if this is None:
+                            return
+                        if this.end:
+                            this.finish_playback()
                             return
 
                         if this.reset:  # radio only
@@ -200,17 +199,18 @@ class DirectOpusStream(BufferedOpusSource):
                             break
 
                         if not (this.paused and this.radio):
-                            while len(this.buffer) < this.BUFFER_SIZE:
+                            while len(this.buffer) < this.BUFFER_SIZE:  # packets refill loop
                                 new_packet = next(packet_generator)
-                                if seek_to and new_packet.pts < seek_to:
+                                if reconnect and seek_to is not None and new_packet.pts < seek_to:
                                     continue
-                                seek_to = None
-                                this.buffer.append(new_packet)
+                                reconnect = False
                                 error_count = 0
+                                if new_packet.pts is not None:
+                                    seek_to = new_packet.pts
+                                this.push_to_buffer(new_packet)
 
                         this = None
                         time.sleep(0.02)
-
             except (
                 av.HTTPUnauthorizedError,
                 av.HTTPForbiddenError,
@@ -257,10 +257,58 @@ class DirectOpusStream(BufferedOpusSource):
                     this = None
                     time.sleep(0.3)
 
+    def push_to_buffer(self, new_packet: av.Packet):
+        self.buffer.append(new_packet)
+
+    def finish_playback(self):
+        pass
+
     def calculate_time_passed(self) -> float | None:
         if self.time_base is None:
             return None
         return float(self.current_pts * self.time_base)
+
+
+class NonOpusStream(DirectOpusStream):
+    def __init__(self, url, radio=False):
+        super().__init__(url, radio)
+        self.log = ClassLogger(log, self)
+        self.audio_fifo = av.AudioFifo()
+        self.resampler = av.AudioResampler(format="s16", layout="stereo", rate=self.SAMPLE_RATE)
+        self.encoder = av.CodecContext.create("libopus", "w")
+        self.encoder.sample_rate = self.SAMPLE_RATE
+        self.encoder.layout = "stereo"
+        self.encoder.format = "s16"
+        self.encoder.bit_rate = config.OPUS_BITRATE * 1000
+        self.encoder.options = {"application": "audio"}
+        self.encoder.open()
+        self.time_base = self.encoder.time_base
+
+    def push_to_buffer(self, new_packet: av.Packet):
+        for frame in new_packet.decode():
+            resampled_frames = self.resampler.resample(frame)
+            for r_frame in resampled_frames:
+                r_frame.pts = None
+                self.audio_fifo.write(r_frame)
+
+        while self.audio_fifo.samples >= self.SAMPLES_PER_20MS:
+            audio_block = self.audio_fifo.read(self.SAMPLES_PER_20MS)
+            packets = self.encoder.encode(audio_block)
+            self.buffer.extend(packets)
+
+    def finish_playback(self):
+        n_samples_left = self.audio_fifo.samples
+        if n_samples_left > 0:
+            self.log.debug("adding padding")
+            padding = av.AudioFrame("s16", "stereo", self.SAMPLES_PER_20MS - n_samples_left)
+            padding.sample_rate = self.SAMPLE_RATE
+            for plane in padding.planes:
+                plane.update(b"\x00" * plane.buffer_size)
+            self.audio_fifo.write(padding)
+            audio_block = self.audio_fifo.read()
+            packets = self.encoder.encode(audio_block)
+            self.buffer.extend(packets)
+        self.buffer.extend(self.encoder.encode())
 
 
 class RAMBufferOpusSource(PlaybackSource):
