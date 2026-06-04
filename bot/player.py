@@ -96,11 +96,13 @@ class Song:
                     self.playback = RAMBufferOpusSource(opus_url)
         except Exception:
             log.exception("Could not load opus stream, falling back to non opus source")
+            opus = None
 
-        if MODE == 1:
-            self.playback = NonOpusStream(song_url)
-        else:
-            self.playback = RAMBufferSource(song_url)
+        if not opus:
+            if MODE == 1:
+                self.playback = NonOpusStream(song_url)
+            else:
+                self.playback = RAMBufferSource(song_url)
 
     # self.playback = RawPCMSource(song_url)
 

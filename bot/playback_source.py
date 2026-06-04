@@ -210,7 +210,7 @@ class DirectOpusStream(BufferedOpusSource):
                                 this.push_to_buffer(new_packet)
 
                         this = None
-                        time.sleep(0.02)
+                        time.sleep(0.1)
             except (
                 av.HTTPUnauthorizedError,
                 av.HTTPForbiddenError,
