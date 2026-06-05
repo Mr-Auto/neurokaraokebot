@@ -297,17 +297,24 @@ class NonOpusStream(DirectOpusStream):
             self.buffer.extend(packets)
 
     def finish_playback(self):
-        n_samples_left = self.audio_fifo.samples
-        if n_samples_left > 0:
-            self.log.debug("adding padding")
-            padding = av.AudioFrame("s16", "stereo", self.SAMPLES_PER_20MS - n_samples_left)
-            padding.sample_rate = self.SAMPLE_RATE
-            for plane in padding.planes:
-                plane.update(b"\x00" * plane.buffer_size)
-            self.audio_fifo.write(padding)
-            audio_block = self.audio_fifo.read()
-            packets = self.encoder.encode(audio_block)
-            self.buffer.extend(packets)
+        for r_frame in self.resampler.resample(None):
+            r_frame.pts = None
+            self.audio_fifo.write(r_frame)
+        while self.audio_fifo.samples > 0:
+            if self.audio_fifo.samples < self.SAMPLES_PER_20MS:
+                padding = av.AudioFrame(
+                    self.audio_fifo.format,
+                    self.audio_fifo.layout,
+                    self.SAMPLES_PER_20MS - self.audio_fifo.samples,
+                )
+                padding.sample_rate = self.SAMPLE_RATE
+                for plane in padding.planes:
+                    plane.update(b"\x00" * plane.buffer_size)
+                self.audio_fifo.write(padding)
+            audio_block = self.audio_fifo.read(self.SAMPLES_PER_20MS)
+            if audio_block is None:
+                break
+            self.buffer.extend(self.encoder.encode(audio_block))
         self.buffer.extend(self.encoder.encode())
 
 
@@ -427,21 +434,24 @@ class RAMBufferSource(BufferedOpusSource):
                     time.sleep(0.2)
 
         except (StopIteration, av.error.EOFError, av.error.ExitError):
-            n_samples_left = audio_fifo.samples
-            if n_samples_left > 0:
-                this.log.debug("adding padding")
-                padding = av.AudioFrame(
-                    samples=this.SAMPLES_PER_20MS - n_samples_left, format="s16", layout="stereo"
-                )
-                padding.sample_rate = this.SAMPLE_RATE
-                for plane in padding.planes:
-                    plane.update(b"\x00" * plane.buffer_size)
-
-                audio_fifo.write(padding)
-                audio_block = audio_fifo.read()
-                packets = encoder.encode(audio_block)
-                this.buffer.extend(packets)
-
+            for r_frame in resampler.resample(None):
+                r_frame.pts = None
+                audio_fifo.write(r_frame)
+            while audio_fifo.samples > 0:
+                if audio_fifo.samples < this.SAMPLES_PER_20MS:
+                    padding = av.AudioFrame(
+                        audio_fifo.format,
+                        audio_fifo.layout,
+                        this.SAMPLES_PER_20MS - audio_fifo.samples,
+                    )
+                    padding.sample_rate = this.SAMPLE_RATE
+                    for plane in padding.planes:
+                        plane.update(b"\x00" * plane.buffer_size)
+                    audio_fifo.write(padding)
+                audio_block = audio_fifo.read(this.SAMPLES_PER_20MS)
+                if audio_block is None:
+                    break
+                this.buffer.extend(encoder.encode(audio_block))
             this.buffer.extend(encoder.encode())
 
             this.end = True
