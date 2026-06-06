@@ -102,7 +102,7 @@ class Song:
             if MODE == 1:
                 self.playback = NonOpusStream(song_url)
             else:
-                self.playback = RAMBufferSource(song_url)
+                self.playback = RAMBufferNonOpusSource(song_url)
 
     # self.playback = RawPCMSource(song_url)
 
@@ -111,19 +111,15 @@ class Song:
 
     @property
     def cover_artists(self) -> str:
-        cover_str = ""
-        artists_list = self.song_info.get("coverArtists")
-        if artists_list:
-            if isinstance(artists_list[0], dict):
-                cover_str = " & ".join(artist["name"] for artist in artists_list)
-            else:
-                cover_str = " & ".join(artists_list)
-        return cover_str
+        return self._get_artist("coverArtists")
 
     @property
     def original_artists(self) -> str:
+        return self._get_artist("originalArtists")
+
+    def _get_artist(self, artist_type: str) -> str:
         original_str = ""
-        artists_list = self.song_info.get("originalArtists")
+        artists_list = self.song_info.get(artist_type)
         if artists_list:
             if isinstance(artists_list[0], dict):
                 original_str = " & ".join(artist["name"] for artist in artists_list)
@@ -144,7 +140,9 @@ class Song:
             response = requests.get(image_url, timeout=8)
             if response.status_code == 200:
                 with io.BytesIO(response.content) as image_binary:
-                    discord_file = discord.File(fp=image_binary, filename="attachment.gif")
+                    discord_file = discord.File(
+                        image_binary, "attachment.gif", description="Cover Art"
+                    )
                     return discord_file
 
         image_url += "/quality=90"
@@ -180,7 +178,7 @@ class RadioSong(Song):
     def download(self):
         pass
 
-    def get_cover_art(self, download_animated=False):
+    def get_cover_art(self, download_animated=False) -> str | None:
         art = super().get_cover_art(download_animated)
         if art is None:
             return self.song_info.get("_cover_art")

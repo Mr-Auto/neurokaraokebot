@@ -619,25 +619,28 @@ class MusicCog(commands.Cog):
 
     async def radio_update_status(self, guild_id: int):
         mp = self.music_players.get(guild_id)
-        if mp and mp.update_status:
-            guild = self.bot.get_guild(guild_id)
-            if guild is not None:
-                retry_count = 0
-                try:
-                    while True:
-                        mp.current_song.get_data(True)
-                        song_name = mp.current_song.song_name()
-                        if self.voice_statuses.get(guild_id, "") != song_name:
-                            voice_channel = guild.voice_client.channel
-                            await self.set_voice_status(voice_channel, song_name, mp.is_paused())
-                            return
-                        retry_count += 1
-                        if retry_count > 5:
-                            log.warning("was unable to update vc status for the radio")
-                            return
-                        await asyncio.sleep(3)
-                except:
-                    log.exception("exception during status update")
+        if not mp or not mp.update_status:
+            return
+        guild = self.bot.get_guild(guild_id)
+        if guild is None:
+            return
+        retry_count = 0
+        await asyncio.sleep(1)
+        try:
+            while True:
+                mp.current_song.get_data(True)
+                song_name = mp.current_song.song_name()
+                if self.voice_statuses.get(guild_id, "") != song_name:
+                    voice_channel = guild.voice_client.channel
+                    await self.set_voice_status(voice_channel, song_name, mp.is_paused())
+                    return
+                retry_count += 1
+                if retry_count > 5:
+                    log.debug("radio_update_status: was unable to update vc status for the radio")
+                    return
+                await asyncio.sleep(3)
+        except:
+            log.exception("radio_update_status: exception during status update")
 
     async def start(self, ctx: commands.Context):
         vc = ctx.voice_client

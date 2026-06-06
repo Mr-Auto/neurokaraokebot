@@ -372,7 +372,7 @@ class RAMBufferOpusSource(PlaybackSource):
         self.file_buffer.close()
 
 
-class RAMBufferSource(BufferedOpusSource):
+class RAMBufferNonOpusSource(BufferedOpusSource):
     BUFFER_SIZE = 50
 
     def __init__(self, url: str):
@@ -383,14 +383,16 @@ class RAMBufferSource(BufferedOpusSource):
         file_buffer = io.BytesIO(response.content)
         if file_buffer.getbuffer().nbytes < 10000:
             file_buffer.close()
-            raise RuntimeError(f"{RAMBufferSource.__name__}: Got less then 10KB")
+            raise RuntimeError(f"{RAMBufferNonOpusSource.__name__}: Got less then 10KB")
 
         self_weak = weakref.ref(self)
         thread = threading.Thread(target=self._run_loop, args=(self_weak, file_buffer), daemon=True)
         thread.start()
 
     @staticmethod
-    def _run_loop(weak_self: weakref.ReferenceType["RAMBufferSource"], file_buffer: io.BytesIO):
+    def _run_loop(
+        weak_self: weakref.ReferenceType["RAMBufferNonOpusSource"], file_buffer: io.BytesIO
+    ):
         this = weak_self()
         try:
             with av.open(file_buffer) as container:
