@@ -1,5 +1,10 @@
-# Max songs cached, since we use double cache, with requested songs it will be 6
-# (3 in random queue and 3 in request queue, assuming there is 3 or more songs requested)
+from enum import IntEnum, StrEnum
+import json
+import random
+from dataclasses import dataclass, field, asdict
+
+# Max songs cached, since we use double cache, with requested songs it will be 4 + one currently playing
+# (2 in random queue and 2 in request queue, assuming there is 2 or more songs requested)
 MAX_CACHE = 2
 # Pause the playback after the bot is left alone in the VC for X minutes
 PAUSE_AFTER = 2
@@ -20,13 +25,22 @@ PLAYLIST_API = "https://api.neurokaraoke.com/api/playlist/"
 ARTIST_API = "https://api.neurokaraoke.com/api/artist/"
 SETLISTS_API = "https://api.neurokaraoke.com/api/playlists?startIndex=0&pageSize=1000&search=&sortBy=&sortDescending=False&isSetlist=True&year=0"
 PLAYLIST_URL = "https://twinskaraoke.com/playlist/"
-RADIO21_URL = "https://radio.twinskaraoke.com/listen/neuro_21/radio.ogg"
-RADIO21_SONGDATA = "https://radio.twinskaraoke.com/api/nowplaying/neuro_21"
 
-from enum import IntEnum
-import json
-import random
-from dataclasses import dataclass, field, asdict
+
+class RADIO21(StrEnum):
+    URL = "https://radio.twinskaraoke.com/public/neuro_21"
+    LOGO = "https://files.catbox.moe/e5bshj.gif"
+    SONGDATA = "https://radio.twinskaraoke.com/api/nowplaying/neuro_21"
+
+
+class SWARMFM(StrEnum):
+    URL = "https://player.sw.arm.fm"
+    STREAM = "https://cast.sw.arm.fm/stream"
+    SONGDATA = "https://swarm-fm.boopdev.com/v2/player"
+    LOGO = "https://files.catbox.moe/4t19wk.png"
+    COVER_ART_TWINS = "https://files.catbox.moe/6osfxs.gif"
+    COVER_ART_NEURO = "https://files.catbox.moe/5i1xrb.gif"
+    COVER_ART_EVIL = "https://files.catbox.moe/2h9bah.gif"
 
 
 # Embed colors
@@ -54,11 +68,21 @@ class _EmoteCollection:
     EVILJAM_LIST: list[str] = field(default_factory=list)
     OK_LIST: list[str] = field(default_factory=list)
     WAVE_LIST: list[str] = field(default_factory=list)
+    SWARMFM_LIST: list[str] = field(default_factory=list)
+    NEUROKARAOKE_LIST: list[str] = field(default_factory=list)
     _filename = "data/emotes.json"
 
     @property
     def SILLY(self) -> str:
         return self._pick(self.SILLY_LIST)
+
+    @property
+    def SWARMFM(self) -> str:
+        return self._pick(self.SWARMFM_LIST)
+
+    @property
+    def NEUROKARAOKE(self) -> str:
+        return self._pick(self.NEUROKARAOKE_LIST)
 
     @property
     def SAD(self) -> str:

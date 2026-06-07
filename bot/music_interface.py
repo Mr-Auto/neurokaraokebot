@@ -211,9 +211,9 @@ class MusicCog(commands.Cog):
         mp = self.get_music_player(ctx)
         current_song = mp.current_song
         radio_name = None
-        if isinstance(current_song, player.Radio21):
-            current_song = current_song.get_song()
-            radio_name = "Radio21"
+        if isinstance(current_song, player.Radio):
+            current_song = mp.current_song.get_song(mp.current_song.CURRENT)
+            radio_name = mp.current_song.name()
         song_remaining = current_song.remaining()
         if song_remaining is None and radio_name is None:
             await ctx.reply(f"Something went wrong {EMOTES.SILLY}")
@@ -232,7 +232,9 @@ class MusicCog(commands.Cog):
                 requested_by = "Yes"
             else:
                 requested_by = "No"
-            footer = f"{radio_name}         Requested: {requested_by}"
+            footer = radio_name
+            if radio_name == player.Radio21.name():
+                footer += f"         Requested: {requested_by}"
         else:
             requested_by = requested_by or self.bot.user.name
             footer = f'Requested by "{requested_by}"'
@@ -316,10 +318,10 @@ class MusicCog(commands.Cog):
         next_song = None
         mp = self.get_music_player(ctx)
         radio_name = None
-        if isinstance(mp.current_song, player.Radio21):
-            next_song = mp.current_song.get_song("playing_next")
-            radio_name = "Radio21"
-            song_remaining = mp.current_song.get_song("now_playing").remaining()
+        if isinstance(mp.current_song, player.Radio):
+            next_song = mp.current_song.get_song(mp.current_song.NEXT)
+            radio_name = mp.current_song.name()
+            song_remaining = mp.current_song.get_song(mp.current_song.CURRENT).remaining()
         else:
             next_song = mp.get_next_song()
             song_remaining = mp.current_song.remaining()
@@ -344,25 +346,31 @@ class MusicCog(commands.Cog):
                 requested_by = "Yes"
             else:
                 requested_by = "No"
-            footer = f"{radio_name}         Requested: {requested_by}"
+            footer = radio_name
+            if radio_name == player.Radio21.name():
+                footer += f"         Requested: {requested_by}"
         else:
             requested_by = requested_by or self.bot.user.name
             footer = f'Requested by "{requested_by}"'
         if mp.is_paused():
             note = f"Playing `PAUSED` {EMOTES.PAUSE}"
-        embed, discord_file = self.get_song_embed(next_song, note, footer)
-        cover_str = next_song.cover_artists
-        cover_by = parse_cover_by(cover_str)
-        emote_str = EMOTES.JAM
-        match cover_by:
-            case CoverBy.Vedal:
-                pass
-            case CoverBy.Twins:
-                emote_str = EMOTES.NEUROJAM + EMOTES.EVILJAM
-            case CoverBy.Neuro:
-                emote_str = EMOTES.NEUROJAM
-            case CoverBy.Evil:
-                emote_str = EMOTES.EVILJAM
+        if isinstance(next_song, player.Radio):
+            embed = self.get_radio_embed(next_song, note, footer)
+            emote_str = next_song.emote()
+            discord_file = None
+        else:
+            embed, discord_file = self.get_song_embed(next_song, note, footer)
+            cover_by = parse_cover_by(next_song.cover_artists)
+            emote_str = EMOTES.JAM
+            match cover_by:
+                case CoverBy.Vedal:
+                    pass
+                case CoverBy.Twins:
+                    emote_str = EMOTES.NEUROJAM + EMOTES.EVILJAM
+                case CoverBy.Neuro:
+                    emote_str = EMOTES.NEUROJAM
+                case CoverBy.Evil:
+                    emote_str = EMOTES.EVILJAM
         try:
             await ctx.reply(f"Next song: {emote_str}", embed=embed, file=discord_file)
         except discord.errors.HTTPException as e:
@@ -580,13 +588,15 @@ class MusicCog(commands.Cog):
 
     @commands.command()
     @cmd_verify()
-    async def radio(self, ctx: commands.Context, radio="21"):
+    async def radio(self, ctx: commands.Context, *, radio: str):
         """Request radio playback, avaible options: [Radio21, SwarmFM]"""
         mp = self.get_music_player(ctx)
-        if radio.lower() in ("21", "radio21", "neuro_21"):
+        if radio.lower() in ("21", "radio21", "neuro_21", "radio 21", "radio-21"):
             radio_type = player.RadioType.Radio21
+        elif radio.lower() in ("swarmfm", "swfm", "sw.fm", "sw-fm", "swarm-fm", "swarm fm", "swarm"):
+            radio_type = player.RadioType.SwarmFM
         else:
-            await ctx.reply(f"Unknown radio ")
+            await ctx.reply(f"Unknown radio, avaible options: [Radio21, SwarmFM]")
             return
 
         queue_duration = mp.request_queue_duration()
@@ -599,8 +609,12 @@ class MusicCog(commands.Cog):
                 playing_in_str = f"`Unknown` {EMOTES.SILLY}"
 
         position = mp.request_radio(radio_type, ctx.author.name)
+        if radio_type == player.RadioType.Radio21:
+            radio_name = player.Radio21.name()
+        elif radio_type == player.RadioType.SwarmFM:
+            radio_name = player.SwarmFM.name()
         await ctx.reply(
-            f"Added `Radio 21` at position {position} in the queue\nPlaying {playing_in_str}"
+            f"Added `{radio_name}` at position {position} in the queue\nPlaying {playing_in_str}"
         )
 
     def get_music_player(self, ctx: commands.Context) -> player.MusicPlayer:
@@ -830,6 +844,19 @@ class MusicCog(commands.Cog):
 
         embed.set_footer(text=footer)
         return embed, discord_file
+
+    @staticmethod
+    def get_radio_embed(
+        radio: player.Radio,
+        last_section: str | None = None,
+        footer: str | None = None,
+    ):
+        embed = discord.Embed(
+            title=radio.name(), description=last_section, color=radio.color(), url=radio.url()
+        )
+        embed.set_thumbnail(url=radio.logo_url())
+        embed.set_footer(text=footer)
+        return embed
 
     @commands.Cog.listener()
     async def on_voice_state_update(

@@ -15,7 +15,7 @@ log = logging.getLogger()
 MODE = 1
 
 
-def fetch_json_data(url: str, get=None, post=None, retries=3):
+def fetch_json_data(url: str, get=None, post=None, retries=3) -> dict | None:
     log.info(f"fetch_json_data: Fetching json data from '{url}'")
     for i in range(retries):
         try:
@@ -32,7 +32,7 @@ def fetch_json_data(url: str, get=None, post=None, retries=3):
             if i < retries - 1:
                 time.sleep(2)
             else:
-                log.warning("fetch_json_data: All retry attempts failed.")
+                log.warning(f"fetch_json_data: All retry attempts failed. {url}")
 
 
 class Song:
@@ -190,25 +190,87 @@ class RadioType(enum.Enum):
     SwarmFM = enum.auto()
 
 
-class Radio21(Song):
+class Radio(Song):
+    CURRENT = None
+    NEXT = None
+
+    @staticmethod
+    def name() -> str:
+        raise NotImplementedError
+
+    @staticmethod
+    def color() -> int:
+        raise NotImplementedError
+
+    @staticmethod
+    def url() -> str:
+        raise NotImplementedError
+
+    @staticmethod
+    def logo_url() -> str:
+        raise NotImplementedError
+
+    @staticmethod
+    def emote() -> str:
+        raise NotImplementedError
+
+    @property
+    def cover_artists(self) -> str:
+        return None
+
+    @property
+    def original_artists(self) -> str:
+        return None
+
+    def remaining(self) -> None:
+        return None
+
+    @property
+    def duration(self) -> None:
+        return None
+
+
+class Radio21(Radio):
     def __init__(self, requested_by=None):
         self.playback: DirectOpusStream | None = None
-        self.data: dict | None = fetch_json_data(RADIO21_SONGDATA)
+        self.data: dict | None = fetch_json_data(RADIO21.SONGDATA)
         self.fetched_at = time.time()
         self.requested_by = requested_by
+        self.CURRENT = "now_playing"
+        self.NEXT = "playing_next"
 
-    def get_data(self, force=False):
+    @staticmethod
+    def name() -> str:
+        return "Radio 21"
+
+    @staticmethod
+    def url() -> str:
+        return RADIO21.URL
+
+    @staticmethod
+    def color() -> int:
+        return 0xB554FF
+
+    @staticmethod
+    def logo_url() -> str:
+        return RADIO21.LOGO
+
+    @staticmethod
+    def emote() -> str:
+        return EMOTES.NEUROKARAOKE
+
+    def get_data(self, force=False) -> dict | None:
         data_age = time.time() - self.fetched_at + 5
         if (
             force
             or not self.data
-            or self.data.get("now_playing", {}).get("remaining", -999) < data_age
+            or self.data.get(self.CURRENT, {}).get("remaining", -999) < data_age
         ):
-            self.data = fetch_json_data(RADIO21_SONGDATA)
+            self.data = fetch_json_data(RADIO21.SONGDATA)
             self.fetched_at = time.time()
         return self.data
 
-    def get_song(self, order="now_playing") -> RadioSong | None:
+    def get_song(self, order) -> RadioSong | None:
         radio_json = self.get_data()
         if not radio_json:
             return None
@@ -234,20 +296,109 @@ class Radio21(Song):
         else:
             song = RadioSong(song_info, str(playing.get("is_request", False)))
             time_passed = None
-            if order == "now_playing":
+            if order == self.CURRENT:
                 time_passed = self.playback.calculate_time_passed()
             song.set_playback_times(playing.get("duration", 0), time_passed)
             return song
 
     def download(self):
-        self.playback = DirectOpusStream(RADIO21_URL, True)
+        data = fetch_json_data(RADIO21.SONGDATA)
+        if data:
+            for mount in data.get("mounts", []):
+                if mount.get("name") == "Opus":
+                    self.playback = DirectOpusStream(mount["url"], True)
+                    break
 
     def song_name(self) -> str:
         radio_json = self.get_data()
-        return "Radio21: " + radio_json.get("now_playing", {}).get("song", {}).get("text", "")
+        return "Radio21: " + radio_json.get(self.CURRENT, {}).get("song", {}).get("text", "")
 
-    def remaining(self) -> None:
-        return None
+
+class SwarmFM(Radio):
+    def __init__(self, requested_by=None):
+        self.playback: NonOpusStream | None = None
+        self.data: dict | None = fetch_json_data(SWARMFM.SONGDATA)
+        self.fetched_at = time.time()
+        self.requested_by = requested_by
+        self.CURRENT = "current"
+        self.NEXT = "next"
+
+    @staticmethod
+    def name():
+        return "SwarmFM"
+
+    @staticmethod
+    def url() -> str:
+        return SWARMFM.URL
+
+    @staticmethod
+    def color() -> int:
+        return 0xCCCCCC
+
+    @staticmethod
+    def logo_url() -> str:
+        # logo by SNT10
+        return SWARMFM.LOGO
+
+    @staticmethod
+    def emote() -> str:
+        return EMOTES.SWARMFM
+
+    def get_data(self, force=False):
+        data_age = time.time() - self.fetched_at - 1
+        if force or not self.data or self.data.get("position", {}) < data_age:
+            self.data = fetch_json_data(SWARMFM.SONGDATA)
+            self.fetched_at = time.time()
+        return self.data
+
+    def get_song(self, order) -> RadioSong | None:
+        radio_json = self.get_data(True)
+        if not radio_json:
+            return None
+        playing = radio_json.get(order)
+        if not playing:
+            return None
+        cap_cover_artists = [item.capitalize() for item in playing.get("singer", [])]
+        if "Neuro" in cap_cover_artists:
+            if "Evil" in cap_cover_artists:
+                cover_art = SWARMFM.COVER_ART_TWINS
+            else:
+                cover_art = SWARMFM.COVER_ART_NEURO
+        elif "Evil" in cap_cover_artists:
+            cover_art = SWARMFM.COVER_ART_EVIL
+        else:
+            cover_art = None
+
+        fake_song_info = {
+            "originalArtists": [playing.get("artist", "")],
+            "coverArtists": cap_cover_artists,
+            "duration": playing.get("duration", 0),
+            "_cover_art": cover_art,
+            "title": playing.get("name"),
+            "songId": playing.get("id"),
+        }
+        song = RadioSong(fake_song_info)
+        time_passed = None
+        if order == self.CURRENT:
+            time_passed = radio_json.get("position", 0)
+        song.set_playback_times(playing.get("duration", 0), time_passed)
+
+        return song
+
+    def download(self):
+        self.playback = NonOpusStream(SWARMFM.STREAM, True)
+
+    def song_name(self) -> str:
+        radio_json = self.get_data()
+        current = radio_json.get(self.CURRENT, {})
+        artist = current.get("artist", "")
+        song_name = current.get("name", "")
+        cap_cover_artists = [item.capitalize() for item in current.get("singer", [])]
+        cover_by = " & ".join(cap_cover_artists)
+        full_name = f"SwarmFM: {artist} - {song_name}"
+        if cover_by:
+            full_name += f" ({cover_by})"
+        return full_name
 
 
 class MusicPlayer:
@@ -263,7 +414,7 @@ class MusicPlayer:
                 f"MusicPlayer: Unable to fetch random queue from api.neurokaraoke.com, data: {data}"
             )
         self.cache.extend(Song(item) for item in data)
-        self.current_song = self.cache.popleft()
+        self.current_song: Song | Radio = self.cache.popleft()
         self.current_song.download()
 
     def request_queue_duration(self) -> int | None:
@@ -354,6 +505,6 @@ class MusicPlayer:
             case RadioType.Radio21:
                 self.requests_cache.append(Radio21(requested_by))
             case RadioType.SwarmFM:
-                pass
+                self.requests_cache.append(SwarmFM(requested_by))
 
         return len(self.requests_cache)

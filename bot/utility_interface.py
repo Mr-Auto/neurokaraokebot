@@ -9,7 +9,7 @@ import requests
 
 import stats
 import player
-from config import EMOTES,RADIO21_SONGDATA
+from config import EMOTES, RADIO21, SWARMFM
 
 log = logging.getLogger()
 
@@ -276,14 +276,22 @@ class UtilityCog(commands.Cog):
             neurokaraoke_storage = f"`{response_time:.2f}ms`"
         await asyncio.sleep(2)
         try:
-            response = requests.get(RADIO21_SONGDATA, timeout=20)
+            response = requests.get(RADIO21.SONGDATA, timeout=20)
         except:
             radio21 = "failed"
         else:
             response_time = response.elapsed.total_seconds() * 1000
             is_online = response.json().get("is_online", "")
-            radio21 = f"`{response_time:.2f}ms` is_online: {is_online}"
+            radio21 = f"`{response_time:.2f}ms` is_online: `{is_online}`"
         await asyncio.sleep(2)
+        try:
+            response = requests.get(SWARMFM.SONGDATA, timeout=20)
+        except:
+            swarmFM = "failed"
+        else:
+            response_time = response.elapsed.total_seconds() * 1000
+            playing = response.json().get("playing", "")
+            swarmFM = f"`{response_time:.2f}ms` playing: `{playing}`"
 
         await ctx.reply(
             f"Bot latency: {latency}\n"
@@ -292,6 +300,7 @@ class UtilityCog(commands.Cog):
             f"- images.neurokaraoke: {neurokaraoke_images}\n"
             f"- storage.neurokaraoke: {neurokaraoke_storage}\n"
             f"- radio21 data: {radio21}\n"
+            f"- swarmFM data: {swarmFM}\n"
         )
 
     @commands.command(hidden=True)

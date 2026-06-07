@@ -51,6 +51,7 @@ class MyBot(commands.Bot):
 
     async def on_guild_join(_, guild):
         log.info(f"I have been added to a new server: {guild.name}[{guild.id}]")
+        print(f"I have been added to a new server: {guild.name}[{guild.id}]")
         for channel in guild.text_channels:
             if "general" in channel.name.lower():
                 await channel.send(EMOTES.WAVE)
