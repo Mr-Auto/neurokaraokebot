@@ -140,9 +140,8 @@ class Song:
             response = requests.get(image_url, timeout=8)
             if response.status_code == 200:
                 with io.BytesIO(response.content) as image_binary:
-                    discord_file = discord.File(
-                        image_binary, "attachment.gif", description="Cover Art"
-                    )
+                    filename = coverArt.get("fileName", "attachment.gif")
+                    discord_file = discord.File(image_binary, filename, description="Cover Art")
                     return discord_file
 
         image_url += "/quality=90"

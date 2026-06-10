@@ -95,6 +95,7 @@ class MusicCog(commands.Cog):
         self.music_players: dict[int, player.MusicPlayer] = {}
         self.check_alone_status.start()
         self.voice_statuses = {}
+        self.error_time = 0
 
     async def cog_unload(self):
         self.check_alone_status.cancel()
@@ -171,7 +172,9 @@ class MusicCog(commands.Cog):
             mp.pause()
 
         stats.servers.stopped_playing(ctx.guild.id)
+        self.error_time = time.time()
         vc = ctx.voice_client
+        vc.stop()
         channel = vc.channel
         await ctx.reply(f"Rebooting voice connection... {EMOTES.LOADING}")
         await vc.disconnect()
@@ -582,7 +585,6 @@ class MusicCog(commands.Cog):
         if not json_result or len(json_result) == 0:
             await ctx.reply(f"Didn't get playlist back {EMOTES.SILLY}")
             return
-
         view = SetlistsView(json_result, ctx.author.id)
         view.message = await ctx.reply(view=view)
 
@@ -598,7 +600,6 @@ class MusicCog(commands.Cog):
         else:
             await ctx.reply(f"Unknown radio, avaible options: [Radio21, SwarmFM]")
             return
-
         queue_duration = mp.request_queue_duration()
         playing_in_str = f"`PAUSED` {EMOTES.PAUSE}"
         if not mp.is_paused():
@@ -607,7 +608,6 @@ class MusicCog(commands.Cog):
                 playing_in_str = f"<t:{playing_in}:R>"
             else:
                 playing_in_str = f"`Unknown` {EMOTES.SILLY}"
-
         position = mp.request_radio(radio_type, ctx.author.name)
         if radio_type == player.RadioType.Radio21:
             radio_name = player.Radio21.name()
@@ -664,7 +664,9 @@ class MusicCog(commands.Cog):
         if self.music_players.get(ctx.guild.id):
             self.music_players[ctx.guild.id] = None
             log.warning(f"start: Overwriting music player, server: {ctx.guild.name}[{ctx.guild.id}]")
-        vc.stop()
+        if vc.is_playing():
+            self.error_time = time.time()
+            vc.stop()
         start_wait = time.perf_counter()
 
         new_mp = player.MusicPlayer()
@@ -723,10 +725,14 @@ class MusicCog(commands.Cog):
         except discord.ClientException as e:
             if "Not connected to voice" in str(e):
                 log.error("play_current: Bot not connected to VC?")
+                self.error_time = time.time()
+                vc.stop()
                 await vc.guild.voice_client.disconnect(force=True)
                 return
             elif "Already playing audio" in str(e):
                 log.error("play_current: Already playing?")
+                self.error_time = time.time()
+                vc.stop()
                 await vc.guild.voice_client.disconnect(force=True)
                 return
         except Exception:
@@ -744,6 +750,8 @@ class MusicCog(commands.Cog):
     def playback_end(self, vc: discord.VoiceClient, error):
         if error:
             log.error(f"Error during playback: {error}, server: {vc.guild.name}")
+        if (self.error_time + 5) > time.time():
+            return
         asyncio.run_coroutine_threadsafe(self.next_song(vc.guild.id, error is None), self.bot.loop)
 
     async def next_song(self, guild_id: int, success: bool):
