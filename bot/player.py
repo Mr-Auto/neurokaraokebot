@@ -83,10 +83,10 @@ class Song:
     def download(self):
         opus = self.song_info.get("opus")
         if opus:
-            opus_url = STORAGE_URL + self.song_info["opus"].strip("/")
+            opus_url = AUDIO_URL + self.song_info["opus"].strip("/")
         else:
             log.warning(f"Song: '{self.get_id()}' is missing opus!")
-        song_url = STORAGE_URL + self.song_info["absolutePath"].strip("/")
+        song_url = AUDIO_URL + self.song_info["absolutePath"].strip("/")
 
         try:
             if opus:
@@ -232,11 +232,11 @@ class Radio(Song):
 class Radio21(Radio):
     def __init__(self, requested_by=None):
         self.playback: DirectOpusStream | None = None
-        self.data: dict | None = fetch_json_data(RADIO21.SONGDATA)
-        self.fetched_at = time.time()
+        self.fetched_at = 0
         self.requested_by = requested_by
         self.CURRENT = "now_playing"
         self.NEXT = "playing_next"
+        self.get_data(True)
 
     @staticmethod
     def name() -> str:
@@ -312,15 +312,18 @@ class Radio21(Radio):
         radio_json = self.get_data()
         return "Radio21: " + radio_json.get(self.CURRENT, {}).get("song", {}).get("text", "")
 
+    def dump_json(self, indent=4) -> str:
+        return json.dumps(self.data, indent=indent)
+
 
 class SwarmFM(Radio):
     def __init__(self, requested_by=None):
         self.playback: NonOpusStream | None = None
-        self.data: dict | None = fetch_json_data(SWARMFM.SONGDATA)
-        self.fetched_at = time.time()
+        self.fetched_at = 0
         self.requested_by = requested_by
         self.CURRENT = "current"
         self.NEXT = "next"
+        self.get_data(True)
 
     @staticmethod
     def name():
@@ -398,6 +401,9 @@ class SwarmFM(Radio):
         if cover_by:
             full_name += f" ({cover_by})"
         return full_name
+
+    def dump_json(self, indent=4) -> str:
+        return json.dumps(self.data, indent=indent)
 
 
 class MusicPlayer:
@@ -505,5 +511,5 @@ class MusicPlayer:
                 self.requests_cache.append(Radio21(requested_by))
             case RadioType.SwarmFM:
                 self.requests_cache.append(SwarmFM(requested_by))
-
+        self.refill()
         return len(self.requests_cache)

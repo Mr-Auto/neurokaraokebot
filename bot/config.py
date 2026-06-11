@@ -15,7 +15,7 @@ OPUS_BITRATE = 128
 
 # API stuff, no need to edit
 RANDOM_API = "https://api.neurokaraoke.com/api/songs/random"
-STORAGE_URL = "https://storage.neurokaraoke.com/"
+AUDIO_URL = "https://audio.neurokaraoke.com/"
 SONG_URL = "https://twinskaraoke.com/song/"
 SONG_API = "https://api.neurokaraoke.com/api/songs/"
 SEARCH_API = "https://api.neurokaraoke.com/api/songs"

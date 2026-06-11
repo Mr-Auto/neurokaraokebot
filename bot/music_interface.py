@@ -696,7 +696,10 @@ class MusicCog(commands.Cog):
                 log.warning(
                     f"play_current: no playback for current song. Requested ({mp.current_song.requested_by is not None}) Attempting to download again"
                 )
-                mp.current_song.download()
+                try:
+                    mp.current_song.download(None)
+                except Exception:
+                    log.exception("play_current: error during download")
                 if not mp.current_song.has_playback():
                     log.error(
                         f"play_current: could not download the song: {mp.current_song.dump_json()}"
@@ -892,7 +895,9 @@ class MusicCog(commands.Cog):
                 mp.pause()
                 stats.servers.stopped_playing(guild_id)
                 log.warning("Detected active playback, attempting to resume")
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(1)
+                if member.guild.voice_client:
+                    log.warning("Already connected to voice?")
                 vc = await before.channel.connect(reconnect=False)
                 # We use play_current so it will continue playing the song
                 # Even if alone_counter is met, we need to start playback to put it in valid vc state
