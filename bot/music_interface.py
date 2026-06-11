@@ -1048,7 +1048,15 @@ class MusicCog(commands.Cog):
             if not mp:
                 continue
             vc = guild.voice_client
-            if not vc or mp.is_paused() or vc.is_paused():
+            if not vc:
+                log.warning(f"Bot has MusicPlayer but it's not in VC rn {guild.name}[{guild.id}]")
+                continue
+            if mp.is_paused() or vc.is_paused():
+                if len(vc.channel.members) == 1:
+                    mp.alone_counter += 1
+                if mp.alone_counter > PAUSE_AFTER + 2:
+                    self.music_players[guild.id] = None
+                    await vc.disconnect()
                 continue
             # includes the bot itself
             undeafened_members = [
