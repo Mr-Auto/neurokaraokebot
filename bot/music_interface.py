@@ -221,7 +221,7 @@ class MusicCog(commands.Cog):
             await ctx.reply(f"Something went wrong {EMOTES.SILLY}")
             log.error(f"song command: No playback for the current song! {radio_name or ''}")
             return
-        if song_remaining:
+        if song_remaining is not None:
             bucket = ctx.command._buckets.get_bucket(ctx.message)
             bucket.per = song_remaining / 2
             song_end = int(time.time() + song_remaining)
@@ -284,8 +284,10 @@ class MusicCog(commands.Cog):
         if line_start == -1:
             return
         line_end = embed.description.rfind("▬")
-        if line_end == -1 or symbol > line_end:
+        if line_end == -1:
             return
+        if symbol > line_end:
+            line_end = symbol
         description_end = embed.description[line_end + 1 :]
         duration = song_ref().duration
         counter = 0
@@ -770,7 +772,7 @@ class MusicCog(commands.Cog):
                     and not mp.current_song.song_update_running
                 ):
                     ref = weakref.ref(mp.current_song)
-                    task = asyncio.create_task(self.swarmfm_song_update(ref, vc.guild.id))
+                    task = self.bot.loop.create_task(self.swarmfm_song_update(ref, vc.guild.id))
                     task.add_done_callback(self.scheduled_task_done)
                     mp.current_song.song_update_running = True
                     mp.current_song.playback.start(None)
