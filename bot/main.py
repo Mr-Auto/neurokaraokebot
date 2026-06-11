@@ -119,9 +119,10 @@ class MyBot(commands.Bot):
             except (
                 aiohttp.ClientConnectionError,
                 aiohttp.ClientOSError,
+                aiohttp.ClientPayloadError,
             ) as e:
                 if i > 0:
-                    return CustomResponse(None, None, e.message)
+                    return CustomResponse(None, None, str(e))
             except web.HTTPServerError as e:
                 if i > 0:
                     return CustomResponse(None, e.status, f"Server Error({e.status})")
