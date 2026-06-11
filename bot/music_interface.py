@@ -679,6 +679,19 @@ class MusicCog(commands.Cog):
         except:
             log.exception("radio_update_status: exception during status update")
 
+    async def swarmfm_song_update(self, ref: weakref.ReferenceType[player.SwarmFM], guild_id: int):
+        while True:
+            swarmfm = ref()
+            if swarmfm is None:
+                return
+            await self.radio_update_status(guild_id)
+            data = swarmfm.get_data()
+            position = data.get("position", 0)
+            duration = data.get("current", {}).get("duration", 30)
+            swarmfm = None
+            data = None
+            await asyncio.sleep(duration - position)
+
     async def start(self, ctx: commands.Context):
         vc = ctx.voice_client
         if not vc:
@@ -752,10 +765,20 @@ class MusicCog(commands.Cog):
                 f"play_current: Starting playback '{mp.current_song.song_name()}' in {vc.guild.name}/{vc.channel.name}"
             )
             if mp.current_song.playback.start:
-                set_status_lambda = lambda: asyncio.run_coroutine_threadsafe(
-                    self.radio_update_status(vc.guild.id), self.bot.loop
-                )
-                mp.current_song.playback.start(set_status_lambda)
+                if (
+                    isinstance(mp.current_song, player.SwarmFM)
+                    and not mp.current_song.song_update_running
+                ):
+                    ref = weakref.ref(mp.current_song)
+                    task = asyncio.create_task(self.swarmfm_song_update(ref, vc.guild.id))
+                    task.add_done_callback(self.scheduled_task_done)
+                    mp.current_song.song_update_running = True
+                    mp.current_song.playback.start(None)
+                else:
+                    set_status_lambda = lambda: asyncio.run_coroutine_threadsafe(
+                        self.radio_update_status(vc.guild.id), self.bot.loop
+                    )
+                    mp.current_song.playback.start(set_status_lambda)
 
             vc.play(
                 mp.current_song.playback,
@@ -798,9 +821,9 @@ class MusicCog(commands.Cog):
         future = asyncio.run_coroutine_threadsafe(
             self.next_song(vc.guild.id, error is None), self.bot.loop
         )
-        future.add_done_callback(self.next_song_pipeline_done)
+        future.add_done_callback(self.scheduled_task_done)
 
-    def next_song_pipeline_done(self, fut):
+    def scheduled_task_done(self, fut):
         try:
             fut.result()
         except Exception:

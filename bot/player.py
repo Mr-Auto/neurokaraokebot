@@ -345,6 +345,7 @@ class SwarmFM(Radio):
         self.CURRENT = "current"
         self.NEXT = "next"
         self.get_data(True)
+        self.song_update_running = False
 
     @staticmethod
     def name():
