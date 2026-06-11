@@ -442,7 +442,7 @@ class MusicPlayer:
 
     def request_queue_duration(self) -> int | None:
         duration = 0
-        if isinstance(self.current_song, Radio21):
+        if isinstance(self.current_song, Radio):
             return None
 
         for song in self.requests_cache:
