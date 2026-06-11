@@ -1,6 +1,10 @@
+import asyncio
+from dataclasses import dataclass
 import logging
 from logging.handlers import TimedRotatingFileHandler
 import os
+import aiohttp
+from aiohttp import web
 from dotenv import load_dotenv
 from discord import Intents, Activity, ActivityType, StatusDisplayType
 from discord.ext import commands
@@ -11,6 +15,13 @@ from utility_interface import UtilityCog
 from config import EMOTES
 
 log = logging.getLogger()
+
+
+@dataclass
+class CustomResponse:
+    json_data: str | None
+    status: int | None
+    error: str | None
 
 
 class MyBot(commands.Bot):
@@ -35,11 +46,18 @@ class MyBot(commands.Bot):
             help_command=None,
             activity=activity,
         )
+        self.session: aiohttp.ClientSession = None
 
     async def setup_hook(self):
+        self.session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(15, 5))
         await self.add_cog(MusicCog(self))
         await self.add_cog(UtilityCog(self))
         self.before_invoke(self.before_command_invoke)
+
+    async def close(self):
+        await super().close()
+        if self.session:
+            await self.session.close()
 
     async def on_ready(self):
         log.info(f"Logged in as {self.user} (ID: {self.user.id})")
@@ -84,6 +102,41 @@ class MyBot(commands.Bot):
         log.info(
             f"Command: '!{ctx.command}' used by: {ctx.author}[{ctx.author.id}] in: ({ctx.guild} / {ctx.channel})"
         )
+
+    async def fetch_json_data(
+        self, url: str, *, get=None, post=None, headers=None
+    ) -> CustomResponse:
+        method = self.session.post if post is not None else self.session.get
+        kwargs = {"json": post} if post is not None else {"params": get}
+        for i in range(2):
+            try:
+                async with method(url, headers=headers, **kwargs) as resp:
+                    resp.raise_for_status()
+                    json_data = None
+                    if resp.status == 200:
+                        json_data = await resp.json()
+                    return CustomResponse(json_data, resp.status, None)
+            except (
+                aiohttp.ClientConnectionError,
+                aiohttp.ClientOSError,
+            ) as e:
+                if i > 0:
+                    return CustomResponse(None, None, e.message)
+            except web.HTTPServerError as e:
+                if i > 0:
+                    return CustomResponse(None, e.status, f"Server Error({e.status})")
+            except web.HTTPClientError as e:
+                if i > 0 or e.status not in (408, 409, 421, 424, 429):
+                    return CustomResponse(None, e.status, f"HTTP Error({e.status})")
+            except web.HTTPError as e:
+                return CustomResponse(None, e.status, f"Unknown HTTP Error({e.status})")
+            except TimeoutError:
+                return CustomResponse(None, None, "Timeout Error")
+            except Exception:
+                log.exception("exception in fetch_json_data")
+                return CustomResponse(None, None, "Unknown Error")
+            finally:
+                await asyncio.sleep(0.5)
 
 
 def my_namer(default_name: str) -> str:

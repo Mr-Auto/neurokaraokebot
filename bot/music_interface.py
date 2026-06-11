@@ -4,7 +4,6 @@ from discord.ext import commands, tasks
 import discord.ui
 import logging
 import asyncio
-import requests
 import time
 import typing
 import enum
@@ -77,7 +76,7 @@ def cmd_verify():
     return commands.check(predicate)
 
 
-def song_search(**kwargs) -> list | None:
+def song_search(**kwargs) -> dict:
     """
     sort by available:
     Title PlayCount KaraokeDate Duration
@@ -86,7 +85,7 @@ def song_search(**kwargs) -> list | None:
     {"search":"text","page": 1,"pageSize": 10,"sortBy":"KaraokeDate","sortDesc": True,"sortDesc":false,"genreIds":null,"themeIds":null,"moodIds":null,"artistIds":null,
     "coverArtistIds":null,"languageIds":null,"energyLevel":null,"tempo":null,"key":null,"karaokeStart":null,"karaokeEnd":null}
     """
-    return player.fetch_json_data(SEARCH_API, post=kwargs)
+    return kwargs
 
 
 class MusicCog(commands.Cog):
@@ -243,7 +242,7 @@ class MusicCog(commands.Cog):
             footer = f'Requested by "{requested_by}"'
         if mp.is_paused():
             note = f"Ends `PAUSED` {EMOTES.PAUSE}"
-        embed, discord_file = self.get_song_embed(current_song, note, footer, song_remaining)
+        embed, discord_file = await self.get_song_embed(current_song, note, footer, song_remaining)
         cover_str = current_song.cover_artists
         cover_by = parse_cover_by(cover_str)
         emote_str = EMOTES.JAM
@@ -362,7 +361,7 @@ class MusicCog(commands.Cog):
             emote_str = next_song.emote()
             discord_file = None
         else:
-            embed, discord_file = self.get_song_embed(next_song, note, footer)
+            embed, discord_file = await self.get_song_embed(next_song, note, footer)
             cover_by = parse_cover_by(next_song.cover_artists)
             emote_str = EMOTES.JAM
             match cover_by:
@@ -415,16 +414,22 @@ class MusicCog(commands.Cog):
         """Song request"""
         if isinstance(search_string, discord.PartialEmoji):
             search_string = search_string.name
-
-        response = song_search(
+        post_data = song_search(
             search=search_string, page=1, pageSize=1, sortBy="KaraokeDate", sortDesc=True
         )
-        if not response or "items" not in response:
+        response = await self.bot.fetch_json_data(SEARCH_API, post=post_data)
+        if response.error:
+            await ctx.reply(f"Got {response.error} {EMOTES.SILLY}")
+            return
+        if response.status != 200:
+            await ctx.reply(f"Something went wrong, status code: `{response.status}` {EMOTES.SILLY}")
+            return
+        if not response.json_data or "items" not in response.json_data:
             log.warning(f"term: '{search_string}' resulted in empty response")
             await ctx.reply(f"Got empty request back {EMOTES.SAD}")
             return
 
-        result_list = response["items"]
+        result_list = response.json_data["items"]
         if len(result_list) == 0:
             char_limit = 20
             if len(search_string) > char_limit:
@@ -454,11 +459,18 @@ class MusicCog(commands.Cog):
     @commands.command(aliases=("random",))
     async def randomsong(self, ctx: commands.Context):
         """Random song from neurokaraoke.com"""
-        data = player.fetch_json_data(RANDOM_API)
-        if not data or not isinstance(data, list) or len(data) == 0:
-            await ctx.reply("Unable to fetch data from api.neurokaraoke.com")
+        response = await self.bot.fetch_json_data(RANDOM_API)
+        if response.error:
+            await ctx.reply(f"Got {response.error} {EMOTES.SILLY}")
             return
-        embed, discord_file = self.get_song_embed(player.Song(data[0]))
+        if response.status != 200:
+            await ctx.reply(f"Something went wrong, status code: `{response.status}` {EMOTES.SILLY}")
+            return
+        data = response.json_data
+        if not data or not isinstance(data, list) or len(data) == 0:
+            await ctx.reply(f"Unable to fetch data from api.neurokaraoke.com {EMOTES.SAD}")
+            return
+        embed, discord_file = await self.get_song_embed(player.Song(data[0]))
         vc = ctx.voice_client
         view = None
         if (
@@ -506,14 +518,20 @@ class MusicCog(commands.Cog):
     async def findsong(self, ctx: commands.Context, *, search_string: str):
         """Lookup for specific song, allows request from the list if used in VC"""
         # we pull max 60 songs since the view shows up to 6 songs at once
-        response = song_search(
+        post_data = song_search(
             search=search_string, page=1, pageSize=60, sortBy="KaraokeDate", sortDesc=True
         )
-        if not response or "items" not in response:
+        response = await self.bot.fetch_json_data(SEARCH_API, post=post_data)
+        if response.error:
+            await ctx.reply(f"Got {response.error} {EMOTES.SILLY}")
+            return
+        if response.status != 200:
+            await ctx.reply(f"Something went wrong, status code: `{response.status}` {EMOTES.SILLY}")
+            return
+        if not response.json_data or "items" not in response.json_data:
             await ctx.reply(f"Got empty request back {EMOTES.SAD}")
             return
-
-        result_list = response["items"]
+        result_list = response.json_data["items"]
         if len(result_list) == 0:
             char_limit = 20
             if len(search_string) > char_limit:
@@ -541,30 +559,35 @@ class MusicCog(commands.Cog):
                 return
         artist_playlist = "/artist/" in url
         if not artist_playlist:
-            response = requests.get(
-                PLAYLIST_API + playlist_id, headers={"x-guest-id": "67"}, timeout=8
+            response = await self.bot.fetch_json_data(
+                PLAYLIST_API + playlist_id, headers={"x-guest-id": "67"}
             )
-            if response.status_code == 204 and len(url) < 40:
+            if response.error:
+                await ctx.reply(f"Got {response.error} {EMOTES.SILLY}")
+                return
+            if response.status == 204 and len(url) < 40:
                 artist_playlist = True
-            elif response.status_code != 200:
+            elif response.status != 200:
                 await ctx.reply(
-                    f"Something went wrong, status code: `{response.status_code}` {EMOTES.SILLY}"
+                    f"Something went wrong, status code: `{response.status}` {EMOTES.SILLY}"
                 )
                 return
-
+            else:
+                json_result = response.json_data
         if artist_playlist:
-            response = requests.get(ARTIST_API + playlist_id, timeout=8)
-            if response.status_code != 200:
+            response = await self.bot.fetch_json_data(ARTIST_API + playlist_id)
+            if response.error:
+                await ctx.reply(f"Got {response.error} {EMOTES.SILLY}")
+                return
+            if response.status != 200:
                 await ctx.reply(
-                    f"Something went wrong, status code: `{response.status_code}` {EMOTES.SILLY}"
+                    f"Something went wrong, status code: `{response.status}` {EMOTES.SILLY}"
                 )
                 return
-
-        json_result = response.json()
+            json_result = response.json_data
         if "songListDTOs" not in json_result or len(json_result["songListDTOs"]) == 0:
-            await ctx.reply(f"Didn't get playlist back {EMOTES.SILLY}")
+            await ctx.reply(f"Didn't get playlist back {EMOTES.SAD}")
             return
-
         view = SongLookupView(
             json_result["songListDTOs"], True, ctx.author.id, json_result.get("name")
         )
@@ -574,14 +597,14 @@ class MusicCog(commands.Cog):
     @cmd_verify()
     async def setlist(self, ctx: commands.Context):
         """Show all avaible karaoke setlists, allows opening them and songs request"""
-        response = requests.get(SETLISTS_API, timeout=8)
-        if response.status_code != 200:
-            await ctx.reply(
-                f"Something went wrong, status code: `{response.status_code}` {EMOTES.SILLY}"
-            )
+        response = await self.bot.fetch_json_data(SETLISTS_API)
+        if response.error:
+            await ctx.reply(f"Got {response.error} {EMOTES.SILLY}")
             return
-
-        json_result = response.json()
+        if response.status != 200:
+            await ctx.reply(f"Something went wrong, status code: `{response.status}` {EMOTES.SILLY}")
+            return
+        json_result = response.json_data
         if not json_result or len(json_result) == 0:
             await ctx.reply(f"Didn't get playlist back {EMOTES.SILLY}")
             return
@@ -668,11 +691,28 @@ class MusicCog(commands.Cog):
             self.error_time = time.time()
             vc.stop()
         start_wait = time.perf_counter()
-
-        new_mp = player.MusicPlayer()
+        response = await self.bot.fetch_json_data(RANDOM_API)
+        if response.error:
+            await ctx.reply(f"Got {response.error} {EMOTES.SILLY}")
+            raise TypeError(
+                f"MusicPlayer: Unable to fetch random queue from api.neurokaraoke.com, {response.error}"
+            )
+        if response.status != 200:
+            await ctx.reply(
+                f"Could not get data from api.neurokaraoke.com, status code: `{response.status}` {EMOTES.SILLY}"
+            )
+            raise TypeError(
+                f"MusicPlayer: Unable to fetch random queue from api.neurokaraoke.com, status code: {response.status}"
+            )
+        data = response.json_data
+        if not isinstance(data, list) or len(data) == 0:
+            await ctx.reply(f"Could not get data from api.neurokaraoke.com {EMOTES.SILLY}")
+            raise TypeError(
+                f"MusicPlayer: Unable to fetch random queue from api.neurokaraoke.com, data: {data}"
+            )
+        new_mp = player.MusicPlayer(data)
         song_name = new_mp.current_song.song_name()
         self.music_players[ctx.guild.id] = new_mp
-
         # sleep for about 3s before starting, include the download and processing in the wait
         remaining = max(0, 3 - (time.perf_counter() - start_wait))
         await asyncio.sleep(remaining)
@@ -796,8 +836,8 @@ class MusicCog(commands.Cog):
         mp.load_next_song()
         await self.play_current(vc)
 
-    @staticmethod
-    def get_song_embed(
+    async def get_song_embed(
+        self,
         song: player.Song,
         last_section: str | None = None,
         footer: str | None = None,
@@ -850,7 +890,7 @@ class MusicCog(commands.Cog):
             description += f"\n\n{last_section}"
         embed = discord.Embed(title=song_name, description=description, color=color, url=song_url)
         discord_file = None
-        image_data = song.get_cover_art(True)
+        image_data = await song.get_cover_art(True, self.bot.session)
         if image_data:
             if type(image_data) is str:
                 embed.set_thumbnail(url=image_data)

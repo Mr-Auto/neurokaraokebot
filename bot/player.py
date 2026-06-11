@@ -2,6 +2,7 @@ import enum
 import io
 import logging
 import asyncio
+import aiohttp
 import requests
 import json
 import time
@@ -15,19 +16,19 @@ log = logging.getLogger()
 MODE = 1
 
 
-def fetch_json_data(url: str, get=None, post=None, retries=3) -> dict | None:
+def fetch_json_data(
+    url: str, session: requests.Session, *, get=None, post=None, retries=3
+) -> dict | None:
     log.info(f"fetch_json_data: Fetching json data from '{url}'")
     for i in range(retries):
         try:
             if post:
-                response = requests.post(url, json=post, timeout=8)
-            elif get:
-                response = requests.get(url, json=get, timeout=8)
+                response = session.post(url, json=post, timeout=8)
             else:
-                response = requests.get(url, timeout=8)
+                response = session.get(url, params=get, timeout=8)
             response.raise_for_status()
             return response.json()
-        except (requests.exceptions.RequestException, ValueError) as e:
+        except (requests.exceptions.RequestException, ValueError, TimeoutError) as e:
             log.info(f"fetch_json_data: Attempt {i + 1} failed: {e}")
             if i < retries - 1:
                 time.sleep(2)
@@ -80,7 +81,7 @@ class Song:
     def remaining(self) -> float | None:
         return self.playback.remaining() if self.has_playback() else None
 
-    def download(self):
+    def download(self, session: requests.Session | None):
         opus = self.song_info.get("opus")
         if opus:
             opus_url = AUDIO_URL + self.song_info["opus"].strip("/")
@@ -93,7 +94,7 @@ class Song:
                 if MODE == 1:
                     self.playback = DirectOpusStream(opus_url)
                 else:
-                    self.playback = RAMBufferOpusSource(opus_url)
+                    self.playback = RAMBufferOpusSource(opus_url, session)
         except Exception:
             log.exception("Could not load opus stream, falling back to non opus source")
             opus = None
@@ -102,7 +103,7 @@ class Song:
             if MODE == 1:
                 self.playback = NonOpusStream(song_url)
             else:
-                self.playback = RAMBufferNonOpusSource(song_url)
+                self.playback = RAMBufferNonOpusSource(song_url, session)
 
     # self.playback = RawPCMSource(song_url)
 
@@ -127,7 +128,9 @@ class Song:
                 original_str = " & ".join(artists_list)
         return original_str
 
-    def get_cover_art(self, download_animated=False) -> str | discord.File | None:
+    async def get_cover_art(
+        self, download_animated=False, session: aiohttp.ClientSession = None
+    ) -> str | discord.File | None:
         coverArt = self.song_info.get("coverArt")
         if not coverArt:
             return None
@@ -136,13 +139,20 @@ class Song:
             return None
         image_url = IMAGES_URL + absolutePath
         if download_animated and coverArt.get("isAnimated", False):
-            image_url += "/quality=80"
-            response = requests.get(image_url, timeout=8)
-            if response.status_code == 200:
-                with io.BytesIO(response.content) as image_binary:
-                    filename = coverArt.get("fileName", "attachment.gif")
-                    discord_file = discord.File(image_binary, filename, description="Cover Art")
-                    return discord_file
+            try:
+                async with session.get(image_url + "/quality=80") as resp:
+                    if resp.status == 200:
+                        data = await resp.read()
+                        with io.BytesIO(data) as image_binary:
+                            content_type = resp.headers.get("Content-Type", "image/gif")
+                            extension = content_type.split("/")[-1]
+                            filename = f"attachment.{extension}"
+                            discord_file = discord.File(
+                                image_binary, filename, description="Cover Art"
+                            )
+                            return discord_file
+            except Exception:
+                log.exception("exception during cover art download")
 
         image_url += "/quality=90"
         return image_url
@@ -174,11 +184,13 @@ class RadioSong(Song):
     def duration(self) -> float | None:
         return self.duration_sec
 
-    def download(self):
+    def download(self, _):
         pass
 
-    def get_cover_art(self, download_animated=False) -> str | None:
-        art = super().get_cover_art(download_animated)
+    async def get_cover_art(
+        self, download_animated=False, session: aiohttp.ClientSession = None
+    ) -> str | None:
+        art = await super().get_cover_art(download_animated, session)
         if art is None:
             return self.song_info.get("_cover_art")
         return art
@@ -229,6 +241,9 @@ class Radio(Song):
         return None
 
 
+g_session = requests.Session()
+
+
 class Radio21(Radio):
     def __init__(self, requested_by=None):
         self.playback: DirectOpusStream | None = None
@@ -265,7 +280,7 @@ class Radio21(Radio):
             or not self.data
             or self.data.get(self.CURRENT, {}).get("remaining", -999) < data_age
         ):
-            self.data = fetch_json_data(RADIO21.SONGDATA)
+            self.data = fetch_json_data(RADIO21.SONGDATA, g_session)
             self.fetched_at = time.time()
         return self.data
 
@@ -289,7 +304,7 @@ class Radio21(Radio):
             }
             song_info = fake_song_info
         else:
-            song_info = fetch_json_data(SONG_API + songId)
+            song_info = fetch_json_data(SONG_API + songId, g_session)
         if not song_info:
             return None
         else:
@@ -300,10 +315,16 @@ class Radio21(Radio):
             song.set_playback_times(playing.get("duration", 0), time_passed)
             return song
 
-    def download(self):
-        data = fetch_json_data(RADIO21.SONGDATA)
+    def download(self, session):
+        if session is None:
+            with requests.Session() as s:
+                data = fetch_json_data(RADIO21.SONGDATA, s)
+        else:
+            data = fetch_json_data(RADIO21.SONGDATA, session)
+        log.error(f"after download {data}")
         if data:
-            for mount in data.get("mounts", []):
+            mounts = data.get("station", {}).get("mounts", [])
+            for mount in mounts:
                 if mount.get("name") == "Opus":
                     self.playback = DirectOpusStream(mount["url"], True)
                     break
@@ -349,7 +370,7 @@ class SwarmFM(Radio):
     def get_data(self, force=False):
         data_age = time.time() - self.fetched_at - 1
         if force or not self.data or self.data.get("position", {}) < data_age:
-            self.data = fetch_json_data(SWARMFM.SONGDATA)
+            self.data = fetch_json_data(SWARMFM.SONGDATA, g_session)
             self.fetched_at = time.time()
         return self.data
 
@@ -375,7 +396,7 @@ class SwarmFM(Radio):
             "originalArtists": [playing.get("artist", "")],
             "coverArtists": cap_cover_artists,
             "duration": playing.get("duration", 0),
-            "_cover_art": cover_art,
+            "_cover_art": str(cover_art) if cover_art is not None else None,
             "title": playing.get("name"),
             "songId": playing.get("id"),
         }
@@ -387,7 +408,7 @@ class SwarmFM(Radio):
 
         return song
 
-    def download(self):
+    def download(self, _):
         self.playback = NonOpusStream(SWARMFM.STREAM, True)
 
     def song_name(self) -> str:
@@ -407,20 +428,16 @@ class SwarmFM(Radio):
 
 
 class MusicPlayer:
-    def __init__(self):
+    def __init__(self, data: list):
         self.cache = deque()
         self.requests_cache = deque()
         self.alone_counter = 0
         self.update_status = True
         self.refill_task: asyncio.Future = None
-        data = fetch_json_data(RANDOM_API)
-        if not isinstance(data, list) or len(data) == 0:
-            raise TypeError(
-                f"MusicPlayer: Unable to fetch random queue from api.neurokaraoke.com, data: {data}"
-            )
         self.cache.extend(Song(item) for item in data)
         self.current_song: Song | Radio = self.cache.popleft()
-        self.current_song.download()
+        self.refill_session = requests.Session()
+        self.current_song.download(self.refill_session)
 
     def request_queue_duration(self) -> int | None:
         duration = 0
@@ -475,12 +492,16 @@ class MusicPlayer:
             to_download.append(item)
         try:
             for item in to_download:
-                item.download()
+                item.download(self.refill_session)
         except Exception:
             log.exception(f"refill_queue: error during song download:")
 
         if len(self.cache) < MAX_CACHE + 1:
-            data = fetch_json_data(RANDOM_API)
+            response = self.refill_session.get(RANDOM_API, timeout=8)
+            if response.status_code != 200:
+                log.error(f"refill_queue: Random API returned {response.status_code}")
+                return
+            data = response.json()
             if not isinstance(data, list) or len(data) == 0:
                 log.warning("refill_queue: No data in fetched result from the random api")
                 return

@@ -246,52 +246,53 @@ class UtilityCog(commands.Cog):
     async def latency(self, ctx: commands.Context):
         latency = self.bot.latency * 1000
         latency = f"{latency:.2f}ms"
-        try:
-            response = requests.get("https://api.neurokaraoke.com/healthz", timeout=20)
-        except:
-            neurokaraoke = "failed"
-        else:
-            response_time = response.elapsed.total_seconds() * 1000
-            neurokaraoke = f"`{response_time:.2f}ms` {response.content.decode()}"
-        await asyncio.sleep(1)
-        try:
-            response = requests.get(
-                "https://images.neurokaraoke.com/WxURxyML82UkE7gY-PiBKw/031c86f6-e113-405a-ae5b-3ada9bb7b900/quality=95",
-                timeout=20,
-            )
-        except:
-            neurokaraoke_images = "failed"
-        else:
-            response_time = response.elapsed.total_seconds() * 1000
-            neurokaraoke_images = f"`{response_time:.2f}ms`"
-        await asyncio.sleep(2)
-        try:
-            response = requests.get(
-                "https://storage.neurokaraoke.com/image/icon/evil_icon.webp", timeout=20
-            )
-        except:
-            neurokaraoke_storage = "failed"
-        else:
-            response_time = response.elapsed.total_seconds() * 1000
-            neurokaraoke_storage = f"`{response_time:.2f}ms`"
-        await asyncio.sleep(2)
-        try:
-            response = requests.get(RADIO21.SONGDATA, timeout=20)
-        except:
-            radio21 = "failed"
-        else:
-            response_time = response.elapsed.total_seconds() * 1000
-            is_online = response.json().get("is_online", "")
-            radio21 = f"`{response_time:.2f}ms` is_online: `{is_online}`"
-        await asyncio.sleep(2)
-        try:
-            response = requests.get(SWARMFM.SONGDATA, timeout=20)
-        except:
-            swarmFM = "failed"
-        else:
-            response_time = response.elapsed.total_seconds() * 1000
-            playing = response.json().get("playing", "")
-            swarmFM = f"`{response_time:.2f}ms` playing: `{playing}`"
+        with requests.Session() as session:
+            try:
+                response = session.get("https://api.neurokaraoke.com/healthz", timeout=20)
+            except:
+                neurokaraoke = "failed"
+            else:
+                response_time = response.elapsed.total_seconds() * 1000
+                neurokaraoke = f"`{response_time:.2f}ms` {response.content.decode()}"
+            await asyncio.sleep(1)
+            try:
+                response = session.get(
+                    "https://images.neurokaraoke.com/WxURxyML82UkE7gY-PiBKw/031c86f6-e113-405a-ae5b-3ada9bb7b900/quality=95",
+                    timeout=20,
+                )
+            except:
+                neurokaraoke_images = "failed"
+            else:
+                response_time = response.elapsed.total_seconds() * 1000
+                neurokaraoke_images = f"`{response_time:.2f}ms`"
+            await asyncio.sleep(2)
+            try:
+                response = session.get(
+                    "https://storage.neurokaraoke.com/image/icon/evil_icon.webp", timeout=20
+                )
+            except:
+                neurokaraoke_storage = "failed"
+            else:
+                response_time = response.elapsed.total_seconds() * 1000
+                neurokaraoke_storage = f"`{response_time:.2f}ms`"
+            await asyncio.sleep(2)
+            try:
+                response = session.get(RADIO21.SONGDATA, timeout=20)
+            except:
+                radio21 = "failed"
+            else:
+                response_time = response.elapsed.total_seconds() * 1000
+                is_online = response.json().get("is_online", "")
+                radio21 = f"`{response_time:.2f}ms` is_online: `{is_online}`"
+            await asyncio.sleep(2)
+            try:
+                response = session.get(SWARMFM.SONGDATA, timeout=20)
+            except:
+                swarmFM = "failed"
+            else:
+                response_time = response.elapsed.total_seconds() * 1000
+                playing = response.json().get("playing", "")
+                swarmFM = f"`{response_time:.2f}ms` playing: `{playing}`"
 
         await ctx.reply(
             f"Bot latency: {latency}\n"

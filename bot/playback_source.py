@@ -314,10 +314,13 @@ class NonOpusStream(DirectOpusStream):
 class RAMBufferOpusSource(PlaybackSource):
     SILENCE_FRAME = b"\xf8\xff\xfe"
 
-    def __init__(self, url: str):
+    def __init__(self, url: str, session: requests.Session | None):
         super().__init__()
         self.log = ClassLogger(log, self)
-        response = requests.get(url, timeout=8)
+        if session:
+            response = session.get(url, timeout=8)
+        else:
+            response = requests.get(url, timeout=8)
         response.raise_for_status()
         self.file_buffer = io.BytesIO(response.content)
         if self.file_buffer.getbuffer().nbytes < 10000:
@@ -368,10 +371,13 @@ class RAMBufferOpusSource(PlaybackSource):
 class RAMBufferNonOpusSource(BufferedOpusSource):
     BUFFER_SIZE = 50
 
-    def __init__(self, url: str):
+    def __init__(self, url: str, session: requests.Session | None):
         super().__init__(False)
         self.log = ClassLogger(log, self)
-        response = requests.get(url, timeout=8)
+        if session:
+            response = session.get(url, timeout=8)
+        else:
+            response = requests.get(url, timeout=8)
         response.raise_for_status()
         file_buffer = io.BytesIO(response.content)
         if file_buffer.getbuffer().nbytes < 10000:

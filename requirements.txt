@@ -1,5 +1,6 @@
 discord.py[voice]
 requests
+aiohttp
 python-dotenv
 ffmpeg
-av
+av>=17.1.0

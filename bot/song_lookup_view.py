@@ -1,16 +1,26 @@
 import discord
 import logging
 import time
-import requests
 from discord import ui
 from enum import Enum, auto
 from datetime import datetime
 
 import stats
 from player import MusicPlayer, Song
-from config import EMOTES, PLAYLIST_URL, PLAYLIST_API
+from config import EMOTES, PLAYLIST_URL, PLAYLIST_API, IMAGES_URL
 
 log = logging.getLogger()
+
+
+# need simple non async function
+def get_song_cover_art(song) -> str | None:
+    coverArt = song.song_info.get("coverArt")
+    if not coverArt:
+        return None
+    absolutePath = coverArt.get("absolutePath")
+    if not absolutePath:
+        return None
+    return IMAGES_URL + absolutePath + "/quality=90"
 
 
 class RequestButton(ui.Button):
@@ -45,7 +55,6 @@ class RequestButton(ui.Button):
             else:
                 playing_in = int(time.time()) + queue_duration
                 playing_in_str = f"<t:{playing_in}:R>"
-
         position, song = mp.request_song(self.song_data, interact.user.name)
         stats.song_requested(interact.guild_id, interact.user.id)
         await interact.channel.send(
@@ -137,13 +146,12 @@ class SongLookupView(ui.LayoutView):
             text_raw += f"\n-# {date}\n"
         text = ui.TextDisplay(text_raw)
         ret_list = []
-        cover_url = song.get_cover_art()
+        cover_url = get_song_cover_art(song)
         if cover_url:
             image = ui.Thumbnail(media=cover_url, description="Cover art")
             ret_list.append(ui.Section(text, accessory=image))
         else:
             ret_list.append(text)
-
         if self.request_allowed:
             was_requested = item.get("_requested") or False
             some_row = ui.ActionRow()
@@ -187,21 +195,30 @@ class SetlistButton(ui.Button):
         return True
 
     async def callback(self, interact: discord.Interaction):
-        response = requests.get(PLAYLIST_API + self.data["id"], headers={"x-guest-id": "69"}, timeout=8)
-        if response.status_code != 200:
+        response = await interact.client.fetch_json_data(
+            PLAYLIST_API + self.data["id"], headers={"x-guest-id": "69"}
+        )
+        if response.error:
             await interact.response.send_message(
-                f"Something went wrong, status code: `{response.status_code}` {EMOTES.SILLY}",
+                f"Got {response.error} {EMOTES.SILLY}", ephemeral=True
+            )
+            return
+        if response.status != 200:
+            await interact.response.send_message(
+                f"Something went wrong, status code: `{response.status}` {EMOTES.SILLY}",
                 ephemeral=True,
             )
             return
-
-        json_result = response.json()
-        if "songListDTOs" not in json_result or len(json_result["songListDTOs"]) == 0:
+        json_result = response.json_data
+        if (
+            not json_result
+            or "songListDTOs" not in json_result
+            or len(json_result["songListDTOs"]) == 0
+        ):
             await interact.response.send_message(
                 f"Didn't get playlist back {EMOTES.SILLY}", ephemeral=True
             )
             return
-
         plylist_data = json_result["songListDTOs"]
         if self.button_function == ButtonType.REQUEST:
             # don't like this child accessing parent, no better idea for now
