@@ -70,7 +70,12 @@ class _EmoteCollection:
     WAVE_LIST: list[str] = field(default_factory=list)
     SWARMFM_LIST: list[str] = field(default_factory=list)
     NEUROKARAOKE_LIST: list[str] = field(default_factory=list)
+    DINKDONK_LIST: list[str] = field(default_factory=list)
     _filename = "data/emotes.json"
+
+    @property
+    def DINKDONK(self) -> str:
+        return self._pick(self.DINKDONK_LIST)
 
     @property
     def SILLY(self) -> str:
