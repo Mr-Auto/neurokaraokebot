@@ -167,11 +167,11 @@ class DirectOpusStream(BufferedOpusSource):
             try:
                 with av.open(
                     this.url,
-                    timeout=(4, 4),
+                    timeout=(3, 3),
                     options={
                         "reconnect": "1",
                         "reconnect_streamed": "1",
-                        "reconnect_delay_max": "4",
+                        "reconnect_delay_max": "3",
                     },
                 ) as container:
                     audio_stream = container.streams.audio[0]
