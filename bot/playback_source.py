@@ -149,7 +149,6 @@ class DirectOpusStream(BufferedOpusSource):
 
     @staticmethod
     def _run_loop(weak_self: weakref.ReferenceType["DirectOpusStream"]):
-        initialised = False
         seek_to = None
         reconnect = False
         error_count = 0
@@ -160,8 +159,7 @@ class DirectOpusStream(BufferedOpusSource):
             if this.end:
                 this.finish_playback()
                 return
-
-            reconnect = initialised and not this.radio and seek_to is not None
+            reconnect = not this.radio and seek_to is not None
             try:
                 with av.open(
                     this.url,
@@ -184,10 +182,8 @@ class DirectOpusStream(BufferedOpusSource):
                         this.container_size = container.size
                         if audio_stream.duration is not None and time_base is not None:
                             this.duration_sec = float(audio_stream.duration * time_base)
-
                     if this.time_base is None:
                         this.time_base = time_base
-                    initialised = True
                     while True:  # main loop
                         this = weak_self()
                         if this is None:
@@ -195,24 +191,25 @@ class DirectOpusStream(BufferedOpusSource):
                         if this.end:
                             this.finish_playback()
                             return
-
                         if this.reset:  # radio only
                             this.buffer.clear()
                             this.reset = False
                             break
-
                         if not (this.paused and this.radio):
                             while len(this.buffer) < this.BUFFER_SIZE:  # packets refill loop
                                 new_packet = next(packet_generator)
-                                if reconnect and new_packet.pts < seek_to:
-                                    # Known issue: in some extreme case potential infinite loop?
+                                if (
+                                    reconnect
+                                    and new_packet.pts is not None
+                                    and new_packet.pts < seek_to
+                                ):
+                                    # in some extreme case potential infinite loop?
                                     continue
                                 reconnect = False
                                 if new_packet.pts is not None:
                                     seek_to = new_packet.pts
                                 this.push_to_buffer(new_packet)
                                 error_count = 0
-
                         this = None
                         time.sleep(0.1)
             except (
@@ -342,7 +339,6 @@ class RAMBufferOpusSource(PlaybackSource):
             return b""
         if self.paused:
             return self.SILENCE_FRAME
-
         try:
             packet = next(self.packet_generator)
             if packet.pts is not None:
@@ -412,49 +408,34 @@ class RAMBufferNonOpusSource(BufferedOpusSource):
                 encoder.options = {"application": "audio"}
                 encoder.open()
                 this.time_base = encoder.time_base
-
                 while True:
                     this = weak_self()
                     if this is None or this.end:
                         break
-
                     while len(this.buffer) < this.BUFFER_SIZE:
-                        packet = next(packet_generator)
-                        for frame in packet.decode():
-                            resampled_frames = resampler.resample(frame)
-                            for r_frame in resampled_frames:
+                        new_packet = next(packet_generator)
+
+                        for frame in new_packet.decode():
+                            for r_frame in resampler.resample(frame):
                                 r_frame.pts = None
                                 audio_fifo.write(r_frame)
-
-                        while audio_fifo.samples >= this.SAMPLES_PER_20MS:
-                            audio_block = audio_fifo.read(this.SAMPLES_PER_20MS)
-                            packets = encoder.encode(audio_block)
-                            this.buffer.extend(packets)
-
+                        ready_frames = audio_fifo.read_many(this.SAMPLES_PER_20MS, False)
+                        for frame in ready_frames:
+                            this.buffer.extend(encoder.encode(frame))
                     this = None
                     time.sleep(0.2)
 
         except (StopIteration, av.error.EOFError, av.error.ExitError):
+            # flush resampler
             for r_frame in resampler.resample(None):
                 r_frame.pts = None
                 audio_fifo.write(r_frame)
-            while audio_fifo.samples > 0:
-                if audio_fifo.samples < this.SAMPLES_PER_20MS:
-                    padding = av.AudioFrame(
-                        audio_fifo.format,
-                        audio_fifo.layout,
-                        this.SAMPLES_PER_20MS - audio_fifo.samples,
-                    )
-                    padding.sample_rate = this.SAMPLE_RATE
-                    for plane in padding.planes:
-                        plane.update(b"\x00" * plane.buffer_size)
-                    audio_fifo.write(padding)
-                audio_block = audio_fifo.read(this.SAMPLES_PER_20MS)
-                if audio_block is None:
-                    break
-                this.buffer.extend(encoder.encode(audio_block))
-            this.buffer.extend(encoder.encode())
-
+            # flush AudioFifo
+            ready_frames = audio_fifo.read_many(this.SAMPLES_PER_20MS, True)
+            for frame in ready_frames:
+                this.buffer.extend(encoder.encode(frame))
+            # flush the encoder
+            this.buffer.extend(encoder.encode(None))
             this.end = True
         except Exception:
             this.end = True
