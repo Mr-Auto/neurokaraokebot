@@ -1,6 +1,8 @@
 import weakref
 import discord
+from discord import utils
 from discord.ext import commands, tasks
+from discord import app_commands
 import discord.ui
 import logging
 import asyncio
@@ -63,14 +65,12 @@ def cmd_verify():
             raise NotAllowedError(
                 "Bot not running, use !karaokehere to invite it to VC. Command allowed only in VC"
             )
-
         if (
             ctx.channel.id != vc.channel.id
             or not ctx.author.voice
             or ctx.author.voice.channel.id != vc.channel.id
         ):
             raise NotAllowedError("You can only use this command in VC with the bot")
-
         return True
 
     return commands.check(predicate)
@@ -94,30 +94,46 @@ class MusicCog(commands.Cog):
         self.music_players: dict[int, player.MusicPlayer] = {}
         self.check_alone_status.start()
         self.voice_statuses = {}
-        self.error_time = 0
+        self.error_time = {}
 
     async def cog_unload(self):
         self.check_alone_status.cancel()
         self.music_players = {}
 
-    @commands.command(priority=1, aliases=("here",))
-    @commands.cooldown(1, 12, commands.BucketType.guild)
-    async def karaokehere(self, ctx: commands.Context):
+    @app_commands.command()
+    @app_commands.guild_only()
+    @app_commands.guild_install()
+    @app_commands.checks.cooldown(1, 12, key=lambda i: i.guild_id)
+    async def joinvc(self, interact: discord.Interaction):
         """Invite bot to VC"""
-        if ctx.voice_client:
+        repl = interact.response.send_message
+        if interact.guild.voice_client:
+            await repl(f"Bot already in VC {EMOTES.SILLY}", ephemeral=True)
             return
-        if ctx.channel.type != discord.ChannelType.voice:
-            await ctx.reply(f"Can't play audio in '{ctx.channel.type}' channel! {EMOTES.SAD}")
+        if interact.channel.type != discord.ChannelType.voice:
+            await repl(
+                f"Can't play audio in '{interact.channel.type}' channel! {EMOTES.SAD}",
+                ephemeral=True,
+            )
             return
-        channel = ctx.channel
+        last_error = self.error_time.get(interact.guild_id, 0) + 10
+        if last_error > time.time():
+            diff = last_error - time.time()
+            await repl(
+                f"There has been an error {EMOTES.SAD}, try again in {diff:.1f}s", ephemeral=True
+            )
+            return
+        channel = interact.channel
         try:
             await channel.connect(reconnect=False, timeout=10)
-            await ctx.reply(f"Starting Neuro Karaoke Playback in '{channel}' {EMOTES.HAPPY}")
-            await self.start(ctx)
+            await repl(f"Starting Neuro Karaoke Playback in '{channel}' {EMOTES.HAPPY}")
+            await self.start(channel)
         except TimeoutError:
-            await ctx.reply(f"Connection timeout {EMOTES.SAD}, try again in a minute or two")
-        except:
-            await ctx.reply(f"Something went wrong {EMOTES.SILLY}")
+            await repl(
+                f"Connection timeout {EMOTES.SAD}, try again in a minute or two", ephemeral=True
+            )
+        except Exception:
+            await repl(f"Something went wrong {EMOTES.SILLY}", ephemeral=True)
             raise
 
     @commands.command(priority=2, aliases=("⏸️",))
@@ -171,7 +187,7 @@ class MusicCog(commands.Cog):
             mp.pause()
 
         stats.servers.stopped_playing(ctx.guild.id)
-        self.error_time = time.time()
+        self.error_time[ctx.guild.id] = time.time()
         vc = ctx.voice_client
         vc.stop()
         channel = vc.channel
@@ -179,7 +195,7 @@ class MusicCog(commands.Cog):
         await vc.disconnect()
         await asyncio.sleep(2)
         await channel.connect(reconnect=False)
-        await self.start(ctx)
+        await self.start(ctx.channel)
 
     @commands.command(priority=8)
     @cmd_verify()
@@ -458,30 +474,32 @@ class MusicCog(commands.Cog):
         )
         mp.refill()
 
-    @commands.command(aliases=("random",))
-    async def randomsong(self, ctx: commands.Context):
+    @app_commands.command()
+    @app_commands.checks.cooldown(1, 5, key=lambda i: i.user.id)
+    async def randomsong(self, interact: discord.Interaction):
         """Random song from neurokaraoke.com"""
+        await interact.response.defer(ephemeral=False) 
+        repl = interact.followup.send
         response = await self.bot.fetch_json_data(RANDOM_API)
         if response.error:
-            await ctx.reply(f"Got {response.error} {EMOTES.SILLY}")
+            await repl(f"Got {response.error} {EMOTES.SILLY}", ephemeral=True)
             return
         if response.status != 200:
-            await ctx.reply(f"Something went wrong, status code: `{response.status}` {EMOTES.SILLY}")
+            await repl(
+                f"Something went wrong, status code: `{response.status}` {EMOTES.SILLY}",
+                ephemeral=True,
+            )
             return
         data = response.json_data
         if not data or not isinstance(data, list) or len(data) == 0:
-            await ctx.reply(f"Unable to fetch data from api.neurokaraoke.com {EMOTES.SAD}")
+            await repl(
+                f"Unable to fetch data from api.neurokaraoke.com {EMOTES.SAD}", ephemeral=True
+            )
             return
         embed, discord_file = await self.get_song_embed(player.Song(data[0]))
-        vc = ctx.voice_client
-        view = None
-        if (
-            vc
-            and self.get_music_player(ctx)
-            and ctx.channel.id == vc.channel.id
-            and ctx.author.voice
-            and ctx.author.voice.channel.id == vc.channel.id
-        ):
+        vc = interact.guild.voice_client
+        view = utils.MISSING
+        if vc and self.get_music_player(interact) and interact.channel.id == vc.channel.id:
             view = discord.ui.View(timeout=60)
             view.add_item(RequestButton(data[0]))
 
@@ -494,14 +512,16 @@ class MusicCog(commands.Cog):
 
             view.on_timeout = on_view_timeout
         try:
-            message = await ctx.reply(embed=embed, view=view, file=discord_file)
+            if discord_file is None:
+                discord_file = utils.MISSING
+            await repl(embed=embed, view=view, file=discord_file)
         except discord.errors.HTTPException as e:
             if e.code == 40005:
-                message = await ctx.reply(embed=embed, view=view)
+                await repl(embed=embed, view=view)
             else:
                 raise
         if view:
-            view.message = message
+            view.message = await interact.original_response()
 
     @commands.command(priority=7)
     @cmd_verify()
@@ -550,12 +570,12 @@ class MusicCog(commands.Cog):
     @commands.command(aliases=("playlists", "pl"))
     @cmd_verify()
     async def playlist(self, ctx: commands.Context, url: str):
-        """Open playlist from neurokaraoke (full url or just id), allowing you to request songs from it"""
+        """Open playlist from neurokaraoke (full url, just id or "lofi"), allowing you to request songs from it"""
         artist_playlist = False
         if url.lower() == "lofi":
             playlist_id = "c33f0038-3abc-4343-9ab9-f597581ce279"
         else:
-            playlist_id = url.strip("/").rsplit("/", 1)[-1]
+            playlist_id = url.strip("<>").strip("/").rsplit("/", 1)[-1]
             if len(playlist_id) != 36:
                 await ctx.reply(f"Invalid playlist link or id {EMOTES.SILLY}")
                 return
@@ -694,51 +714,48 @@ class MusicCog(commands.Cog):
             data = None
             await asyncio.sleep(duration - position)
 
-    async def start(self, ctx: commands.Context):
-        vc = ctx.voice_client
+    async def start(self, channel: discord.VoiceChannel):
+        vc = channel.guild.voice_client
         if not vc:
             return
 
-        if self.music_players.get(ctx.guild.id):
-            self.music_players[ctx.guild.id] = None
-            log.warning(f"start: Overwriting music player, server: {ctx.guild.name}[{ctx.guild.id}]")
+        if self.music_players.get(channel.guild.id):
+            self.music_players[channel.guild.id] = None
+            log.warning(
+                f"start: Overwriting music player, server: {channel.guild.name}[{channel.guild.id}]"
+            )
         if vc.is_playing():
-            self.error_time = time.time()
+            self.error_time[channel.guild.id] = time.time()
             vc.stop()
         start_wait = time.perf_counter()
         response = await self.bot.fetch_json_data(RANDOM_API)
         if response.error:
-            await ctx.reply(f"Got {response.error} {EMOTES.SILLY}")
             raise TypeError(
                 f"MusicPlayer: Unable to fetch random queue from api.neurokaraoke.com, {response.error}"
             )
         if response.status != 200:
-            await ctx.reply(
-                f"Could not get data from api.neurokaraoke.com, status code: `{response.status}` {EMOTES.SILLY}"
-            )
             raise TypeError(
                 f"MusicPlayer: Unable to fetch random queue from api.neurokaraoke.com, status code: {response.status}"
             )
         data = response.json_data
         if not isinstance(data, list) or len(data) == 0:
-            await ctx.reply(f"Could not get data from api.neurokaraoke.com {EMOTES.SILLY}")
             raise TypeError(
                 f"MusicPlayer: Unable to fetch random queue from api.neurokaraoke.com, data: {data}"
             )
         new_mp = player.MusicPlayer(data)
         song_name = new_mp.current_song.song_name()
-        self.music_players[ctx.guild.id] = new_mp
+        self.music_players[channel.guild.id] = new_mp
         # sleep for about 3s before starting, include the download and processing in the wait
         remaining = max(0, 3 - (time.perf_counter() - start_wait))
         await asyncio.sleep(remaining)
         await self.play_current(vc)
-        stats.servers.started_playing(ctx.guild.id)
+        stats.servers.started_playing(channel.guild.id)
         for user in vc.channel.members:
             if user.id != self.bot.user.id and not user.voice.deaf and not user.voice.self_deaf:
-                stats.users.started_listening(user.id, ctx.guild.id)
+                stats.users.started_listening(user.id, channel.guild.id)
 
-        await ctx.send(f"Now playing `{song_name}` {EMOTES.JAM}")
-        log.info(f"start: Starting karaoke in: ({ctx.guild.name} / {ctx.channel.name})")
+        await channel.send(f"Now playing `{song_name}` {EMOTES.JAM}")
+        log.info(f"start: Starting karaoke in: ({channel.guild.name} / {channel.name})")
         new_mp.refill()
 
     async def play_current(self, vc: discord.VoiceClient, start_paused=False):
@@ -793,13 +810,13 @@ class MusicCog(commands.Cog):
         except discord.ClientException as e:
             if "Not connected to voice" in str(e):
                 log.error("play_current: Bot not connected to VC?")
-                self.error_time = time.time()
+                self.error_time[vc.guild.id] = time.time()
                 vc.stop()
                 await vc.guild.voice_client.disconnect(force=True)
                 return
             elif "Already playing audio" in str(e):
                 log.error("play_current: Already playing?")
-                self.error_time = time.time()
+                self.error_time[vc.guild.id] = time.time()
                 vc.stop()
                 await vc.guild.voice_client.disconnect(force=True)
                 return
@@ -818,7 +835,7 @@ class MusicCog(commands.Cog):
     def playback_end(self, vc: discord.VoiceClient, error):
         if error:
             log.error(f"Error during playback: {error}, server: {vc.guild.name}")
-        if (self.error_time + 5) > time.time():
+        if (self.error_time.get(vc.guild.id, 0) + 5) > time.time():
             return
         future = asyncio.run_coroutine_threadsafe(
             self.next_song(vc.guild.id, error is None), self.bot.loop

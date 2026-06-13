@@ -175,7 +175,7 @@ class DirectOpusStream(BufferedOpusSource):
                     audio_stream = container.streams.audio[0]
                     packet_generator = container.demux(audio_stream)
                     if reconnect:
-                        if seek_to >= audio_stream.duration:
+                        if audio_stream.duration is not None and seek_to >= audio_stream.duration:
                             # no need to seek since we finished
                             raise StopIteration
                         container.seek(seek_to, stream=audio_stream)

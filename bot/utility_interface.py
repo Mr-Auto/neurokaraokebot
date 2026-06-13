@@ -1,15 +1,17 @@
 import typing
+import json
 import discord
 import subprocess
 import sys
 import logging
 import asyncio
-from discord.ext import commands
+from discord import app_commands
+from discord.ext import commands, tasks
 import requests
 
 import stats
 import player
-from config import EMOTES, RADIO21, SWARMFM
+from config import *
 
 log = logging.getLogger()
 
@@ -29,9 +31,12 @@ class UtilityCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    @commands.command(name="commands", hidden=True)
-    async def commands_list(self, ctx: commands.Context):
-        """List of all commands"""
+    @app_commands.command(name="commands")
+    @app_commands.guild_only()
+    @app_commands.guild_install()
+    @app_commands.checks.cooldown(1, 1, key=lambda i: i.user.id)
+    async def commandslist(self, interact: discord.Interaction):
+        """List of all ! commands"""
         embed = discord.Embed(title="Command List", color=discord.Color.orange())
         cmds = [c for c in self.bot.commands if not c.hidden]
         sorted_commands = sorted(
@@ -43,7 +48,7 @@ class UtilityCog(commands.Cog):
                 name += " / !"
                 name += " / !".join(command.aliases)
             embed.add_field(name=name, value=command.help or "", inline=False)
-        await ctx.reply(embed=embed)
+        await interact.response.send_message(embed=embed, ephemeral=True)
 
     @commands.command(hidden=True)
     @commands.is_owner()
@@ -98,7 +103,7 @@ class UtilityCog(commands.Cog):
             if message:
                 await ctx.reply(message)
 
-    @commands.command()
+    @commands.command(hidden=True)
     @commands.is_owner()
     async def dumpstats(self, ctx: commands.Context):
         try:

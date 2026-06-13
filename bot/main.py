@@ -6,7 +6,8 @@ import os
 import aiohttp
 from aiohttp import web
 from dotenv import load_dotenv
-from discord import Intents, Activity, ActivityType, StatusDisplayType
+from discord import Intents, Activity, ActivityType, StatusDisplayType, Interaction
+from discord import app_commands
 from discord.ext import commands
 
 import stats
@@ -53,6 +54,7 @@ class MyBot(commands.Bot):
         await self.add_cog(MusicCog(self))
         await self.add_cog(UtilityCog(self))
         self.before_invoke(self.before_command_invoke)
+        self.tree.on_error = self.on_app_command_error
 
     async def close(self):
         await super().close()
@@ -97,6 +99,19 @@ class MyBot(commands.Bot):
             return
 
         log.error(f"on_command_error: '!{ctx.command}': ", exc_info=error)
+
+    async def on_app_command_error(self, interaction: Interaction, error: app_commands.AppCommandError):
+        if interaction.response.is_done():
+            repl = interaction.followup.send
+        else:
+            repl = interaction.response.send_message
+        if isinstance(error, app_commands.CommandOnCooldown):
+            await repl(
+                f"⏳ Command under cooldown.  {error.retry_after:.1f} seconds.", ephemeral=True
+            )
+        else:
+            await repl(f"Something went wrong {EMOTES.SAD}", ephemeral=True)
+            log.exception(f"Unhandled tree error: {error}")
 
     async def before_command_invoke(self, ctx):
         log.info(
