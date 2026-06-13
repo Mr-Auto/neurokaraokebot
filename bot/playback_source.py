@@ -87,7 +87,7 @@ class BufferedOpusSource(PlaybackSource):
                 return bytes(packet)
 
         if self.end:
-            log.debug(f"Ending playback, buffer: {len(self.buffer)}")
+            self.log.debug(f"Ending playback, buffer: {len(self.buffer)}")
             return b""
         else:
             self.log.debug("sending silence")
@@ -126,7 +126,9 @@ class DirectOpusStream(BufferedOpusSource):
         if not radio:
             self._thread_active = True
             self_weak = weakref.ref(self)
-            thread = threading.Thread(target=self._run_loop, args=(self_weak,), daemon=True)
+            thread = threading.Thread(
+                target=self._run_loop, args=(self_weak,), daemon=True, name=self.__class__.__name__
+            )
             thread.start()
 
     def set_pause(self, pause: bool):
@@ -144,7 +146,9 @@ class DirectOpusStream(BufferedOpusSource):
         self._thread_active = True
         self.update_song_func = func
         self_weak = weakref.ref(self)
-        thread = threading.Thread(target=self._run_loop, args=(self_weak,), daemon=True)
+        thread = threading.Thread(
+            target=self._run_loop, args=(self_weak,), daemon=True, name=self.__class__.__name__
+        )
         thread.start()
 
     @staticmethod
@@ -381,7 +385,12 @@ class RAMBufferNonOpusSource(BufferedOpusSource):
             raise RuntimeError(f"{RAMBufferNonOpusSource.__name__}: Got less then 10KB")
 
         self_weak = weakref.ref(self)
-        thread = threading.Thread(target=self._run_loop, args=(self_weak, file_buffer), daemon=True)
+        thread = threading.Thread(
+            target=self._run_loop,
+            args=(self_weak, file_buffer),
+            daemon=True,
+            name=self.__class__.__name__,
+        )
         thread.start()
 
     @staticmethod
