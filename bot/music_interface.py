@@ -802,6 +802,7 @@ class MusicCog(commands.Cog):
             )
             if start_paused:
                 vc.pause()
+            stats.update(vc.guild.id, mp.current_song, self.get_members_listening(vc.channel))
         except discord.ClientException as e:
             if "Not connected to voice" in str(e):
                 log.error("play_current: Bot not connected to VC?")
