@@ -1009,7 +1009,11 @@ class MusicCog(commands.Cog):
                 log.info(
                     f"Bot changed channels from `{before.channel.name}` to `{after.channel.name}` in guild: `{member.guild.name}`"
                 )
-                mp = self.get_music_player(after.channel)
+                mp = self.get_music_player(member)
+                if not mp:
+                    return
+                listening = self.get_members_listening(after.channel)
+                stats.update(member.guild.id, mp.current_song, listening)
                 if mp.update_status:
                     self.set_voice_status(after.channel, mp.current_song.song_name(), mp.is_paused())
             elif before.mute != after.mute:
@@ -1019,6 +1023,8 @@ class MusicCog(commands.Cog):
                     return
                 if after.mute:
                     mp.pause()
+                    listening = self.get_members_listening(before.channel)
+                    stats.update(member.guild.id, mp.current_song, listening)
                     await after.channel.send(f"🔇 {EMOTES.SAD}")
                 else:
                     await after.channel.send(f"🔊 {EMOTES.HAPPY}")

@@ -100,11 +100,11 @@ class MyBot(commands.Bot):
 
         log.error(f"on_command_error: '!{ctx.command}': ", exc_info=error)
 
-    async def on_app_command_error(self, interaction: Interaction, error: app_commands.AppCommandError):
-        if interaction.response.is_done():
-            repl = interaction.followup.send
+    async def on_app_command_error(self, interact: Interaction, error: app_commands.AppCommandError):
+        if interact.response.is_done():
+            repl = interact.followup.send
         else:
-            repl = interaction.response.send_message
+            repl = interact.response.send_message
         if isinstance(error, app_commands.CommandOnCooldown):
             await repl(
                 f"⏳ Command under cooldown.  {error.retry_after:.1f} seconds.", ephemeral=True

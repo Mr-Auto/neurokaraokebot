@@ -311,7 +311,7 @@ class UtilityCog(commands.Cog):
                     leaderboard_text += f"{idx+1}\\. <@{user_id}>: {score}\n"
 
         title = top_comparison.capitalize().replace("_", " ")
-        embed = discord.Embed(title=f"🏆 Top by {title} 🏆", description=leaderboard_text)
+        embed = discord.Embed(title=f"🏆 Top {top_n} by {title} 🏆", description=leaderboard_text)
         await ctx.reply(embed=embed)
 
     @commands.command(hidden=True)

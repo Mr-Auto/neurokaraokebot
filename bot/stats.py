@@ -2,7 +2,7 @@ from dataclasses import dataclass
 import enum
 import json
 import logging
-from player import Song
+from player import Radio, Song
 
 _stats_filename = "data/stats.json"
 _log = logging.getLogger()
@@ -123,18 +123,17 @@ def cache_song(guild_id: int, old_song: Song | None):
         old_id = old_song.get_id()
         if old_id is not None and server_data.song_id != old_id:
             _log.error("cache_song called with different song then in the server data")
-            return
-        update(guild_id, old_song, set())
+            old_song = None
+        else:
+            update(guild_id, old_song, set())
     _increment(_cache_data, guild_id, DataType.Time, server_data.time)
-    if server_data.song_durration is None:
+    dur = server_data.song_durration
+    if dur is None or dur == 0:
         if old_song:
             dur = old_song.duration
-        if dur is None:
-            percent = 999
-        else:
-            percent = dur * 0.75
-    else:
-        percent = server_data.song_durration * 0.75
+        if dur is None or dur == 0:
+            dur = 9999
+    percent = dur * 0.75
     if server_data.time >= percent and server_data.song_id is not None:
         songs_cache = get_songs_cache(guild_id)
         _increment(songs_cache, server_data.song_id, DataType.SongCount)
@@ -142,17 +141,15 @@ def cache_song(guild_id: int, old_song: Song | None):
     for user_id, data in server_data.users_times.items():
         if data is not None and data.time != 0:
             _increment(users_cache, user_id, DataType.Time, data.time)
-            if data.time >= percent:
+            if data.time >= percent and server_data.song_id is not None:
                 _increment(users_cache, user_id, DataType.SongCount)
     _playing_start[guild_id] = None
 
 
 def update(guild_id: int, song: Song, listeners: set[int]):
-    if song is None:
+    if song is None or isinstance(song, Radio):
         return
     song_id = song.get_id()
-    if song_id is None:
-        return
     song_remaining = song.remaining()
     if song_remaining is None:
         _log.warning("update: song remaining is None")
@@ -168,6 +165,7 @@ def update(guild_id: int, song: Song, listeners: set[int]):
         )
         return
     if server_data.song_id != song_id:
+        _log.warning("Update for different song, might be missing last few seconds in the stats")
         cache_song(guild_id, None)
         _playing_start[guild_id] = ServerPlayingData(
             song_id,
@@ -182,9 +180,7 @@ def update(guild_id: int, song: Song, listeners: set[int]):
             server_data.users_times = {listener: UserPlayingData() for listener in listeners}
             return
         if server_data.song_durration is None:
-            if song.duration is None:
-                return
-            else:
+            if song.duration is not None:
                 server_data.song_durration = song.duration
         diff = server_data.song_remaining - song_remaining
         if diff < 0:
