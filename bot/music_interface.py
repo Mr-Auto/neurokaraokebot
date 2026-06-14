@@ -851,7 +851,6 @@ class MusicCog(commands.Cog):
         mp = self.music_players.get(guild_id)
         # Do not try to load next song if not in vc or no player (probably restarting)
         song = mp.current_song if mp else None
-        stats.cache_song(guild_id, song)
         if not vc or not mp:
             log.warning(
                 f"next_song: STOP Voice:{vc is not None}, MusicPlayer:{mp is not None}, server: {guild.name}[{guild_id}]"
@@ -867,6 +866,7 @@ class MusicCog(commands.Cog):
             mp.refill()
         await asyncio.sleep(PAUSE_DURATION)
         log.info(f"next_song: load and play next song, server: {guild.name}[{guild_id}]")
+        stats.cache_song(guild_id, song)
         mp.load_next_song()
         await self.play_current(vc)
 
