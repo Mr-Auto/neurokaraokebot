@@ -56,7 +56,7 @@ class RequestButton(ui.Button):
                 playing_in = int(time.time()) + queue_duration
                 playing_in_str = f"<t:{playing_in}:R>"
         position, song = mp.request_song(self.song_data, interact.user.name)
-        stats.song_requested(interact.guild_id, interact.user.id)
+        stats.song_requested(interact.guild_id, interact.user.id, song.get_id())
         await interact.channel.send(
             f"{interact.user.mention} requested: `{song.song_name()}`\nAdded to the queue at position {position}, playing {playing_in_str}"
         )
@@ -228,13 +228,13 @@ class SetlistButton(ui.Button):
             await interact.response.edit_message(view=the_view)
             cog = interact.client.get_cog("MusicCog")
             mp: MusicPlayer = cog.music_players.get(interact.guild.id)
-            mp.requests_cache.extend(map(lambda d: Song(d, interact.user.name), plylist_data))
+            mp.requests_cache.extend(Song(d, interact.user.name) for d in plylist_data)
             mp.refill()
             song_nr = len(plylist_data)
             await interact.channel.send(
                 f"{interact.user.mention} requested: `{song_nr} songs`\nFrom {self.data['name']}"
             )
-            stats.song_requested(interact.guild_id, interact.user.id)
+            stats.song_requested(interact.guild_id, interact.user.id, None)
         else:
             if hasattr(self.view, "message"):
                 self.view.message = None

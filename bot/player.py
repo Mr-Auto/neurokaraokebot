@@ -205,16 +205,18 @@ class Radio(Song):
     CURRENT = None
     NEXT = None
 
+    def get_id(self) -> str | None:
+        return None
+
+    def get_url(self) -> str | None:
+        return None
+
     @staticmethod
     def name() -> str:
         raise NotImplementedError
 
     @staticmethod
     def color() -> int:
-        raise NotImplementedError
-
-    @staticmethod
-    def url() -> str:
         raise NotImplementedError
 
     @staticmethod
@@ -240,6 +242,20 @@ class Radio(Song):
     def duration(self) -> None:
         return None
 
+    async def get_cover_art(
+        self, download_animated=False, session: aiohttp.ClientSession = None
+    ) -> str | discord.File | None:
+        return None
+
+    def dump_json(self, indent=4) -> str:
+        return ""
+
+    def download(self, session: requests.Session | None):
+        return
+
+    def song_name(self) -> str:
+        return ""
+
 
 g_session = requests.Session()
 
@@ -258,7 +274,7 @@ class Radio21(Radio):
         return "Radio 21"
 
     @staticmethod
-    def url() -> str:
+    def get_url() -> str:
         return RADIO21.URL
 
     @staticmethod

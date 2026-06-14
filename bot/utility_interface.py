@@ -16,13 +16,13 @@ from config import *
 log = logging.getLogger()
 
 
-def format_time_string(seconds: int) -> str:
+def format_time_string(seconds: float) -> str:
     intervals = [(31536000, "yr"), (86400, "d"), (3600, "h"), (60, "m"), (1, "s")]
     parts = []
     for count, name in intervals:
         value, seconds = divmod(seconds, count)
         if value > 0:
-            parts.append(f"{value}{name}")
+            parts.append(f"{int(value)}{name}")
 
     return " ".join(parts) if parts else "0s"
 
@@ -32,6 +32,7 @@ class UtilityCog(commands.Cog):
         self.bot = bot
         self.setlist_check.start()
         self.setlist_data = None
+        self.stats_cooldown = commands.CooldownMapping.from_cooldown(1, 10, commands.BucketType.user)
 
     def cog_unload(self):
         self.setlist_check.cancel()
@@ -55,6 +56,7 @@ class UtilityCog(commands.Cog):
 
     @tasks.loop(minutes=30)
     async def setlist_check(self):
+        stats.save()
         response = await self.bot.fetch_json_data(SETLISTS_API)
         if response.error or response.status != 200 or len(response.json_data) == 0:
             log.warning("setlist_check: could not reach setlist api")
@@ -206,82 +208,111 @@ class UtilityCog(commands.Cog):
         else:
             await ctx.reply(f"Stats saved successfully {EMOTES.HAPPY}")
 
-    @commands.command()
+    @commands.group(invoke_without_command=True)
     async def stats(
         self,
         ctx: commands.Context,
-        option: typing.Union[discord.Member, str] = None,
-        top_option: str = None,
+        *,
+        member: typing.Union[discord.Member, str] = None,
     ):
         """Param: [None / @Mention / user name / "server" / "top"] displays stats"""
-        if option is None:
-            option = ctx.author
-        if isinstance(option, discord.Member):
-            data = stats.users.get_user_data(option.id)
-            if data is None:
-                await ctx.reply(f"No data for **{option.name}** {EMOTES.SILLY}")
+        if member is None:
+            member = ctx.author
+        if isinstance(member, discord.Member):
+            if member.id == self.bot.user.id:
+                await self.server(ctx)
                 return
-            listening_time = data.get("total_time", 0)
-            request_num = data.get("requests", 0)
-            songs_listeded_to = data.get("song_count", 0)
+            data = stats.get_users_cache(ctx.guild.id).get(str(member.id))
+            if data is None:
+                data = {}
+            ctx.bot.get_cog("MusicCog").update_stats(ctx.guild.id)
+            listening_time = data.get(stats.DataType.Time, 0)
+            listening_time += stats.get_user_current_time(ctx.guild.id, member.id)
+            request = data.get(stats.DataType.Request, {})
+            request_num = sum(request.values())
+            songs_listeded_to = data.get(stats.DataType.SongCount, 0)
             message = (
-                f"### {option.mention} stats:\n\n"
+                f"### {member.mention} stats:\n\n"
                 f"Total time listening: `{format_time_string(listening_time)}`\n"
                 f"Listened to: `{songs_listeded_to}` songs\n"
                 f"Requested: `{request_num}` songs"
             )
-            embed = discord.Embed(description=message, color=option.color)
-            embed.set_thumbnail(url=option.avatar.url)
+            embed = discord.Embed(description=message, color=member.color)
+            embed.set_thumbnail(url=member.avatar.url)
             await ctx.reply(embed=embed)
-        elif option.lower() == "server":
-            data = stats.servers.get_server_data(ctx.guild.id)
-            if data is None:
-                await ctx.reply(f"No data for this server {EMOTES.SILLY}")
-                return
-            playing_time = data.get("total_time", 0)
-            request_num = data.get("requests", 0)
-            songs_played = data.get("song_count", 0)
-            message = (
-                f"\nTotal time playing: `{format_time_string(playing_time)}`\n"
-                f"Played: `{songs_played}` songs\n"
-                f"Requests: `{request_num}` songs"
-            )
-            embed = discord.Embed(title=f"{ctx.guild.name} stats:", description=message)
-            embed.set_thumbnail(url=ctx.guild.icon.url)
-            await ctx.reply(embed=embed)
-        elif option.lower() == "top":
-            top_comparison = stats.DataType.Time
-            if top_option is None:
-                pass
+        else:
+            char_limit = 20
+            if len(member) > char_limit:
+                truncated = member[:char_limit] + "..."
             else:
-                top_option = top_option.lower()
-                if top_option in ("time", "listen", "listening", "listeners"):
-                    top_comparison = stats.DataType.Time
-                elif top_option in ("songs", "song", "count", "number", "listened"):
-                    top_comparison = stats.DataType.SongCount
-                elif top_option in ("requests", "requested", "asked", "queued"):
-                    top_comparison = stats.DataType.Request
-                else:
-                    await ctx.reply(f"Unknown statistic, use: [time, songs, requests]")
-                    return
+                truncated = member
+            await ctx.reply(f"Unknown member `{truncated}` {EMOTES.SIDE_EYE}")
 
-            top_n = 5
-            top = stats.users.get_top(top_n, top_comparison)
-            leaderboard_text = ""
-            for idx in range(top_n):
-                users = top.get(idx)
-                if not users:
-                    continue
-                for user_id, score in users:
+    @stats.before_invoke
+    async def check_stats_cooldown(self, ctx):
+        bucket = self.stats_cooldown.get_bucket(ctx.message)
+        retry_after = bucket.update_rate_limit()
+        if retry_after:
+            raise commands.CommandOnCooldown(bucket, retry_after, commands.BucketType.user)
+
+    @stats.command()
+    async def server(self, ctx: commands.Context):
+        data = stats._cache_data.get(str(ctx.guild.id))
+        if data is None:
+            data = {}
+        ctx.bot.get_cog("MusicCog").update_stats(ctx.guild.id)
+        playing_time = data.get(stats.DataType.Time, 0)
+        playing_time += stats.get_server_current_time(ctx.guild.id)
+        songs_cache = stats.get_songs_cache(ctx.guild.id)
+        request_num = 0
+        songs_played = 0
+        for song_data in songs_cache.values():
+            request_num += song_data.get(stats.DataType.Request, 0)
+            songs_played += song_data.get(stats.DataType.SongCount, 0)
+        message = (
+            f"\nTotal time playing: `{format_time_string(playing_time)}`\n"
+            f"Played: `{songs_played}` songs\n"
+            f"Requests: `{request_num}` songs"
+        )
+        embed = discord.Embed(title=f"{ctx.guild.name} stats:", description=message)
+        embed.set_thumbnail(url=ctx.guild.icon.url)
+        await ctx.reply(embed=embed)
+
+    @stats.command()
+    async def top(self, ctx: commands.Context, top_option: str = None, top_n: int = 5):
+        if top_n < 2 or top_n > 20:
+            await ctx.reply(f"Allowed range for the top 2-20 {EMOTES.SILLY}")
+            return
+        top_comparison = stats.DataType.Time
+        if top_option is None:
+            pass
+        else:
+            top_option = top_option.lower()
+            if top_option in ("time", "listen", "listening", "listeners"):
+                top_comparison = stats.DataType.Time
+            elif top_option in ("songs", "song", "count", "number", "listened"):
+                top_comparison = stats.DataType.SongCount
+            elif top_option in ("requests", "requested", "asked", "queued"):
+                top_comparison = stats.DataType.Request
+            else:
+                await ctx.reply(f"Unknown statistic, use: [time, songs, requests]")
+                return
+        ctx.bot.get_cog("MusicCog").update_stats(ctx.guild.id)
+        top = stats.get_top(ctx.guild.id, top_n, top_comparison)
+        leaderboard_text = ""
+        for idx in range(top_n):
+            users = top.get(idx)
+            if not users:
+                continue
+            for user_id, score in users:
+                if score != 0:
                     if top_comparison == stats.DataType.Time:
                         score = format_time_string(score)
                     leaderboard_text += f"{idx+1}\\. <@{user_id}>: {score}\n"
 
-            title = top_comparison.capitalize().replace("_", " ")
-            embed = discord.Embed(title=f"🏆 Top by {title} 🏆", description=leaderboard_text)
-            await ctx.reply(embed=embed)
-        else:
-            await ctx.reply(f"Unknown user `{option}` {EMOTES.SIDE_EYE}")
+        title = top_comparison.capitalize().replace("_", " ")
+        embed = discord.Embed(title=f"🏆 Top by {title} 🏆", description=leaderboard_text)
+        await ctx.reply(embed=embed)
 
     @commands.command(hidden=True)
     @commands.is_owner()
