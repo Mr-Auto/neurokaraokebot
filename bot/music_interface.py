@@ -748,7 +748,6 @@ class MusicCog(commands.Cog):
         remaining = max(0, 3 - (time.perf_counter() - start_wait))
         await asyncio.sleep(remaining)
         await self.play_current(vc)
-        stats.update(channel.guild.id, new_mp.current_song, self.get_members_listening(channel))
         await channel.send(f"Now playing `{song_name}` {EMOTES.JAM}")
         log.info(f"start: Starting karaoke in: ({channel.guild.name} / {channel.name})")
         new_mp.refill()
@@ -1051,6 +1050,7 @@ class MusicCog(commands.Cog):
             vc = guild.voice_client
             if not vc:
                 log.warning(f"Bot has MusicPlayer but it's not in VC rn {guild.name}[{guild.id}]")
+                mp.pause()
                 continue
             stats.update(guild.id, mp.current_song, self.get_members_listening(vc.channel))
             if mp.is_paused() or vc.is_paused():
