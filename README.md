@@ -31,7 +31,10 @@ Main branch is the latest version, releases are only used as backups
         "NEUROJAM": [],
         "EVILJAM": [],
         "OK": [],
-        "WAVE": []
+        "WAVE": [],
+        "SWARMFM": [],
+        "NEUROKARAOKE": [],
+        "DINKDONK": []
     }
   }
   ```
