@@ -11,6 +11,7 @@ Main branch is the latest version, releases are only used as backups
 ## 💾 Installation
 
 * Create your bot on https://discord.com/developers/home
+* Make sure the "Message Content Intent" is enabled
 * Setup your python environment/docker (if desired)
 * Clone repository
 * Install dependencies `pip install -r requirements.txt`
@@ -54,27 +55,29 @@ Sync generally needs to be done once per bot. You may need to run it again after
   *  **Random song** `/randomsong` will get and display random song from the neurokaraoke
 * **Main commands** (work only in VC with the bot):
   *  **Song Requests** `!songrequest [search string]` will add first matching song to the queue, alternatively `!findsong [search string]` to display results before requesting (max 60 results)
-  *  **Radio21** can be requested with `!radio`, radio playback works like a single song, will play until skipped using `!skip`
+  *  **Radio21 or SwarmFM** can be requested with `!radio` command, radio playback works like a single song, will play until skipped using `!skip`
   *  **Song title as VC status** can be disabled with `!updatestatus on/off`
-  *  **View playlist** `!playlist [url/ID]`, will display the playlist in the same view as `!findsong`, allowing to request songs from it
-  *  **View setlist** `!setlist`, will display form with all the setlists, allowing you to request whole setlist or open it as playlist
+  *  **View playlist** `!playlist [url/ID/"lofi"]`, will display the playlist in the same view as `!findsong`, allowing to request songs from it
+  *  **View setlist** `!setlist`, will display form with all the available setlists, allowing you to request whole setlist or open it as playlist
   *  **Reset bot** `!reconnect` will make the bot reconnect and full reset for this server (clear queue etc.)
   *  **Other self explanatory** `!pause`, `!resume`, `!song`, `!nextsong`, `!skip`, `!queue`
 * **Additional** (work everywhere):
-  *  **User stats** can be seen using `!stats` (how long did user listened to karaoke, how many songs have they requested etc.), command also accepts user name or mention as parameter to check other people stats. Also special string `server` to see the whole server stats
+  *  **User stats** can be seen using `!stats [None/user/server]` (how long did user listened to karaoke, how many songs have they requested etc.), command also accepts user name or mention as parameter to check other people stats.
+Also special string `server` to see the whole server stats and `!stats top [time/songs/requests] [top_n]` to see top 5 (or more) by: total listening time, number of songs listened to or number of song requested
   *  **Song lookup** `!findsong [search string]` displays view of the lookup result (max 99 results)
   *  **Issues list** can be seen using `!issue` command, mostly advices on what to do when bot is not working correctly
 * **Setlist updates** only server owner, use `!setlistupdates [channel/clear]` to set/clear channel receiving updates about new setlists
 * **Admin** (only bot's owner)
-  * **Check/change current playback mode** `!mode [None/stream/download]`, the bot has two modes, you may choose depending on your setup (default set in the `player.py`), the `stream` mode will download music in packets aka streaming it, `download` mode downloads the whole file and stores it in RAM, the second option has less complexity and should generally be less CPU demanding but uses more RAM
+  * **Check/change current playback mode** `!mode [None/stream/download]`, the bot has two modes, you may choose depending on your setup (default set in the `player.py`), the `stream` mode will download music in packets aka streaming it, 
+`download` mode downloads the whole file and stores it in RAM, the second option has less complexity and should generally be less CPU demanding but uses more RAM
   *  **Bot status** `!status` will display all the servers the bot is in plus additional information (has valid MusicPlayer, is in VC, is paused)
   *  **Debug emotes** `!emotes [group name]` will make the bot send all the emotes from given group, useful for overview and check if all the emotes are working/are in correct format
   *  **Stop the bot** `!exit` will kill the bot process completely (can be used as restart on a hosting platform that supports auto restart)
   *  **Restart** `!restart` will start new process of this bot and close the current one
   *  **Latency test** with `!latency` (takes few seconds)
-  *  **Dump stats** `!dumpstats` will save all the stats to file. This is just emergency safety feature, stats are saved if bot is stopped using `!exit` or `!restart`
-  *  **Discord Activity** text can we set using `!setstatus [text]` command (the text on the user list / in user profile) 
-  *  **Sync/Unsync** with slash commands with `!sync/!unsync [local/global]`, this needs to be done once after installing the bot
+  *  **Dump stats** `!dumpstats` will save all the stats to file. This is just emergency safety feature, stats are saved every 30 minutes or if bot is stopped using `!exit` or `!restart`
+  *  **Discord Activity** text for the bot can be set using `!setstatus [text]` command (the text on the user list / in user profile) 
+  *  **Sync/Unsync** slash commands with `!sync/!unsync [local/global]`, this needs to be done once after installing the bot
 
 ---
 
@@ -82,7 +85,7 @@ Sync generally needs to be done once per bot. You may need to run it again after
 
 1. Make sure the bot is online
 2. Join a voice channel in your Discord server
-3. In the text potion of the voice channel type `!karaokehere`
+3. In the text portion of the voice channel type `/joinvc`
 4. Bot will join VC, load random queue and start playing
 
 ---
@@ -98,5 +101,3 @@ Sync generally needs to be done once per bot. You may need to run it again after
   * Speak
   * Set Voice Channel Status
   * Send messages
-    
-* Also in discord developer portal, make sure "Message Content Intent" is enabled
