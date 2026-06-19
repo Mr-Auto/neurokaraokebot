@@ -1,8 +1,7 @@
 import weakref
 import discord
-from discord import utils
 from discord.ext import commands, tasks
-from discord import app_commands
+from discord import app_commands, utils
 import discord.ui
 import logging
 import asyncio
@@ -106,7 +105,8 @@ class MusicCog(commands.Cog):
     @app_commands.checks.cooldown(1, 12, key=lambda i: i.guild_id)
     async def joinvc(self, interact: discord.Interaction):
         """Invite bot to VC"""
-        repl = interact.response.send_message
+        await interact.response.defer()
+        repl = interact.followup.send
         if interact.guild.voice_client:
             await repl(f"Bot already in VC {EMOTES.SILLY}", ephemeral=True)
             return
@@ -477,7 +477,7 @@ class MusicCog(commands.Cog):
     @app_commands.checks.cooldown(1, 5, key=lambda i: i.user.id)
     async def randomsong(self, interact: discord.Interaction):
         """Random song from neurokaraoke.com"""
-        await interact.response.defer(ephemeral=False)
+        await interact.response.defer()
         repl = interact.followup.send
         response = await self.bot.fetch_json_data(RANDOM_API)
         if response.error:
