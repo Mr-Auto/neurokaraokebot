@@ -12,7 +12,7 @@ from discord.ext import commands
 
 import stats
 from music_interface import MusicCog, NotAllowedError
-from utility_interface import UtilityCog
+from owner_interface import OwnerCog
 from config import EMOTES
 
 log = logging.getLogger()
@@ -52,7 +52,7 @@ class MyBot(commands.Bot):
     async def setup_hook(self):
         self.session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(15, 5))
         await self.add_cog(MusicCog(self))
-        await self.add_cog(UtilityCog(self))
+        await self.add_cog(OwnerCog(self))
         self.before_invoke(self.before_command_invoke)
         self.tree.on_error = self.on_app_command_error
 

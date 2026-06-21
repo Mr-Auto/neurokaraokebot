@@ -27,7 +27,7 @@ def format_time_string(seconds: float) -> str:
     return " ".join(parts) if parts else "0s"
 
 
-class UtilityCog(commands.Cog):
+class OwnerCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.setlist_check.start()
