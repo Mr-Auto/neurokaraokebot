@@ -62,7 +62,7 @@ def cmd_verify():
         mp = ctx.bot.get_cog("MusicCog").get_music_player(ctx)
         if not vc or not mp:
             raise NotAllowedError(
-                "Bot not running, use !karaokehere to invite it to VC. Command allowed only in VC"
+                "Bot not running, use /joinvc to invite it to VC. Command allowed only in VC"
             )
         if (
             ctx.channel.id != vc.channel.id
@@ -169,7 +169,7 @@ class MusicCog(commands.Cog):
         """Reset the bot and reconnect to this VC (kills the queue)"""
         if not ctx.voice_client:
             await ctx.reply(
-                "Bot not running, use !karaokehere to invite it to VC. Command allowed only in VC",
+                "Bot not running, use /joinvc to invite it to VC. Command allowed only in VC",
                 delete_after=5,
             )
             return
