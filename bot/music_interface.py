@@ -1057,6 +1057,7 @@ class MusicCog(commands.Cog):
                 if len(vc.channel.members) == 1:
                     mp.alone_counter += 1
                 if mp.alone_counter > PAUSE_AFTER + 2:
+                    stats.cache_song(guild.id, mp.current_song)
                     self.music_players[guild.id] = None
                     await vc.disconnect()
                 continue

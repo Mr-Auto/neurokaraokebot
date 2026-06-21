@@ -222,7 +222,7 @@ def get_top(guild_id: int, top_n: int, comparison: DataType) -> dict[int, list[s
     best = [0] * top_n
     users_cache = get_users_cache(guild_id)
     server_start_data = _playing_start.get(guild_id)
-    users_start_times = server_start_data.users_times
+    users_start_times = server_start_data.users_times if server_start_data is not None else dict()
 
     def get_comparision_value(user_id: str, rdata: dict):
         if comparison == DataType.Request:
