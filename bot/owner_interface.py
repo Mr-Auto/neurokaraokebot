@@ -116,18 +116,18 @@ class OwnerCog(commands.Cog):
     @commands.is_owner()
     async def restart(self, ctx: commands.Context):
         await ctx.send(f"Goodbye {EMOTES.SAD}")
-        creationflags = 0
-        if sys.platform == "win32":
-            creationflags = subprocess.CREATE_NEW_CONSOLE
-        subprocess.Popen([sys.executable] + sys.argv, creationflags=creationflags)
         ctx.bot.get_cog("MusicCog").music_players = {}
         for vc in ctx.bot.voice_clients:
             try:
                 vc.stop()
             except:
                 pass
-        await asyncio.sleep(1)
         stats.save(True)
+        await asyncio.sleep(1)
+        creationflags = 0
+        if sys.platform == "win32":
+            creationflags = subprocess.CREATE_NEW_CONSOLE
+        subprocess.Popen([sys.executable] + sys.argv, creationflags=creationflags)
         await asyncio.sleep(1)
         await self.bot.close()
 
