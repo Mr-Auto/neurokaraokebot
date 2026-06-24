@@ -132,9 +132,6 @@ class MusicCog(commands.Cog):
             await repl(
                 f"Connection timeout {EMOTES.SAD}, try again in a minute or two", ephemeral=True
             )
-        except Exception:
-            await repl(f"Something went wrong {EMOTES.SILLY}", ephemeral=True)
-            raise
 
     @commands.command(priority=2, aliases=("⏸️",))
     @cmd_verify()
@@ -815,6 +812,8 @@ class MusicCog(commands.Cog):
                 vc.stop()
                 await vc.guild.voice_client.disconnect(force=True)
                 return
+            else:
+                log.exception("Exception trying to start playback")
         except Exception:
             cs = mp.current_song
             size = cs.playback.size() if cs and cs.has_playback() else None
@@ -839,7 +838,7 @@ class MusicCog(commands.Cog):
         try:
             fut.result()
         except Exception:
-            log.exception("Playing next song failed:")
+            log.exception("Task failed:")
 
     async def next_song(self, guild_id: int):
         guild = self.bot.get_guild(guild_id)

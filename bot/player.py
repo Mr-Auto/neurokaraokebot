@@ -493,7 +493,7 @@ class MusicPlayer:
             log.warning("refill: Forcing refill, expect latency increase")
             self._refill_queue()
             return
-        if self.refill_task and not self.refill_task.done():
+        if self.refill_task is not None and not self.refill_task.done():
             log.info("refill: refill already running, skipping")
             return
         self.refill_task = asyncio.create_task(asyncio.to_thread(self._refill_queue))
@@ -520,7 +520,7 @@ class MusicPlayer:
                 return
             data = response.json()
             if not isinstance(data, list) or len(data) == 0:
-                log.warning("refill_queue: No data in fetched result from the random api")
+                log.error("refill_queue: No data in fetched result from the random api")
                 return
             self.cache.extend(Song(item) for item in data)
         log.info("refill_queue: done")
