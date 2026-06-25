@@ -24,6 +24,7 @@ class CustomResponse:
     json_data: str | None
     status: int | None
     error: str | None
+    url: str
 
 
 class MyBot(commands.Bot):
@@ -54,7 +55,7 @@ class MyBot(commands.Bot):
         self.session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(15, 5))
         await self.add_cog(MusicCog(self))
         await self.add_cog(OwnerCog(self))
-        await self.add_cog(UtilityCog())
+        await self.add_cog(UtilityCog(self))
         self.before_invoke(self.before_command_invoke)
         self.tree.on_error = self.on_app_command_error
 
@@ -132,27 +133,27 @@ class MyBot(commands.Bot):
                     json_data = None
                     if resp.status == 200:
                         json_data = await resp.json()
-                    return CustomResponse(json_data, resp.status, None)
+                    return CustomResponse(json_data, resp.status, None, url)
             except (
                 aiohttp.ClientConnectionError,
                 aiohttp.ClientOSError,
                 aiohttp.ClientPayloadError,
             ) as e:
                 if i > 0:
-                    return CustomResponse(None, None, str(e))
+                    return CustomResponse(None, None, str(e), url)
             except web.HTTPServerError as e:
                 if i > 0:
-                    return CustomResponse(None, e.status, f"Server Error({e.status})")
+                    return CustomResponse(None, e.status, f"Server Error({e.status})", url)
             except web.HTTPClientError as e:
                 if i > 0 or e.status not in (408, 409, 421, 424, 429):
-                    return CustomResponse(None, e.status, f"HTTP Error({e.status})")
+                    return CustomResponse(None, e.status, f"HTTP Error({e.status})", url)
             except web.HTTPError as e:
-                return CustomResponse(None, e.status, f"Unknown HTTP Error({e.status})")
+                return CustomResponse(None, e.status, f"Unknown HTTP Error({e.status})", url)
             except TimeoutError:
-                return CustomResponse(None, None, "Timeout Error")
+                return CustomResponse(None, None, "Timeout Error", url)
             except Exception:
                 log.exception("exception in fetch_json_data")
-                return CustomResponse(None, None, "Unknown Error")
+                return CustomResponse(None, None, "Unknown Error", url)
             finally:
                 await asyncio.sleep(0.5)
 
