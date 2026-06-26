@@ -794,7 +794,7 @@ class MusicCog(commands.Cog):
                 mp.current_song.playback,
                 bitrate=OPUS_BITRATE,
                 signal_type="music",
-                after=lambda e: self.playback_end(vc, e),
+                after=lambda e: self.playback_end(vc.guild.id, e),
             )
             if start_paused:
                 vc.pause()
@@ -804,13 +804,13 @@ class MusicCog(commands.Cog):
                 log.error("play_current: Bot not connected to VC?")
                 self.error_time[vc.guild.id] = time.time()
                 vc.stop()
-                await vc.guild.voice_client.disconnect(force=True)
+                await vc.disconnect(force=True)
                 return
             elif "Already playing audio" in str(e):
                 log.error("play_current: Already playing?")
                 self.error_time[vc.guild.id] = time.time()
                 vc.stop()
-                await vc.guild.voice_client.disconnect(force=True)
+                await vc.disconnect(force=True)
                 return
             else:
                 log.exception("Exception trying to start playback")
@@ -826,12 +826,12 @@ class MusicCog(commands.Cog):
                 song_name = mp.current_song.song_name()
                 await self.set_voice_status(vc.channel, song_name, start_paused)
 
-    def playback_end(self, vc: discord.VoiceClient, error):
+    def playback_end(self, guild_id: int, error):
         if error:
-            log.error(f"Error during playback: {error}, server: {vc.guild.name}")
-        if (self.error_time.get(vc.guild.id, 0) + 5) > time.time():
+            log.error(f"Error during playback: {error}, server id: {guild_id}")
+        if (self.error_time.get(guild_id, 0) + 5) > time.time():
             return
-        future = asyncio.run_coroutine_threadsafe(self.next_song(vc.guild.id), self.bot.loop)
+        future = asyncio.run_coroutine_threadsafe(self.next_song(guild_id), self.bot.loop)
         future.add_done_callback(self.scheduled_task_done)
 
     def scheduled_task_done(self, fut):
