@@ -58,6 +58,7 @@ class MyBot(commands.Bot):
         await self.add_cog(UtilityCog(self))
         self.before_invoke(self.before_command_invoke)
         self.tree.on_error = self.on_app_command_error
+        self.tree.interaction_check = self.interaction_check
 
     async def close(self):
         await super().close()
@@ -120,6 +121,13 @@ class MyBot(commands.Bot):
         log.info(
             f"Command: '!{ctx.command}' used by: {ctx.author}[{ctx.author.id}] in: ({ctx.guild} / {ctx.channel})"
         )
+
+    async def interaction_check(self, interact: Interaction) -> bool:
+        if interact.command:
+            log.info(
+                f"Command: '/{interact.command.qualified_name}' used by: {interact.user}[{interact.user.id}] in: ({interact.guild} / {interact.channel})",
+            )
+        return True
 
     async def fetch_json_data(
         self, url: str, *, get=None, post=None, headers=None
