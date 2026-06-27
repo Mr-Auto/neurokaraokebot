@@ -210,25 +210,15 @@ class StatsCog(commands.GroupCog, group_name="stats"):
         )
         await interact.response.send_message(embed=embed)
 
-    @top.command()
-    async def songs(
+    async def send_song_list(
         self,
+        title: str,
+        top_list: list,
+        top_by: str,
         interact: discord.Interaction,
-        top_by: typing.Literal["played", "requested"],
-        top_n: app_commands.Range[int, 3, 12] = 5,
+        top_comparison: str = None,
     ):
-        """Top played/requested songs"""
-        await interact.response.defer(thinking=True)
         reply = interact.followup.send
-        match top_by:
-            case "played":
-                top_comparison = stats.DataType.SongCount
-                title = "Play Count"
-            case "requested":
-                top_comparison = stats.DataType.Request
-                title = "Request Count"
-        songs = stats.get_songs_cache(interact.guild_id)
-        top_list = nlargest(top_n, songs.items(), key=lambda item: item[1].get(top_comparison, 0))
         tasks = [interact.client.fetch_json_data(SONG_API + song_id) for song_id, _ in top_list]
         api_results = await asyncio.gather(*tasks)
         for result in api_results:
@@ -255,20 +245,23 @@ class StatsCog(commands.GroupCog, group_name="stats"):
             c_song_id = result.json_data["id"]
             for idx in range(len(top_list)):
                 if c_song_id == top_list[idx][0]:
-                    count = top_list[idx][1][top_comparison]
+                    if top_comparison is None:
+                        count = top_list[idx][1]
+                    else:
+                        count = top_list[idx][1][top_comparison]
                     song = player.Song(result.json_data)
                     top_list[idx] = (count, song)
                     break
         view = ui.LayoutView(timeout=1)
         container = ui.Container(accent_color=discord.Color.blue())
-        container.add_item(ui.TextDisplay(f"### 🏆 Top {top_n} Songs by {title} 🏆\n"))
+        container.add_item(ui.TextDisplay(title))
         idx = 1
         for score, song in top_list:
             if score != 0:
                 text = ui.TextDisplay(
                     f"{idx}. [{song.song_name()}]({song.get_url()})\n" f"-# {top_by} {score} times"
                 )
-                url = await song.get_cover_art(False, interact.client.session)
+                url = await song.get_cover_art()
                 if url is None:
                     container.add_item(text)
                 else:
@@ -278,3 +271,58 @@ class StatsCog(commands.GroupCog, group_name="stats"):
                 idx += 1
         view.add_item(container)
         await reply(view=view)
+
+    @top.command()
+    async def songs(
+        self,
+        interact: discord.Interaction,
+        top_by: typing.Literal["played", "requested"],
+        top_n: app_commands.Range[int, 3, 12] = 5,
+    ):
+        """Top played/requested songs"""
+        await interact.response.defer(thinking=True)
+        match top_by:
+            case "played":
+                top_comparison = stats.DataType.SongCount
+                title = f"### 🏆 Top {top_n} Songs by Play Count 🏆\n"
+            case "requested":
+                top_comparison = stats.DataType.Request
+                title = f"### 🏆 Top {top_n} Songs by Request Count 🏆\n"
+        songs = stats.get_songs_cache(interact.guild_id)
+        top_list = nlargest(top_n, songs.items(), key=lambda item: item[1].get(top_comparison, 0))
+        await self.send_song_list(title, top_list, top_by, interact, top_comparison)
+
+    @top.command()
+    async def my_requests(
+        self,
+        interact: discord.Interaction,
+        top_n: app_commands.Range[int, 3, 12] = 5,
+    ):
+        """Show your top requested songs"""
+        await self.user_requests.callback(self, interact, interact.user, top_n)
+
+    @top.command()
+    async def user_requests(
+        self,
+        interact: discord.Interaction,
+        user: discord.Member,
+        top_n: app_commands.Range[int, 3, 12] = 5,
+    ):
+        """Show user top requested songs"""
+        data = stats.get_users_cache(interact.guild_id)
+        user_cache = data.get(str(user.id))
+        if user_cache is None:
+            await interact.response.send_message(
+                f"No requests for this user {EMOTES.SAD}", ephemeral=True
+            )
+            return
+        requested_songs = user_cache.get(stats.DataType.Request)
+        if not requested_songs:
+            await interact.response.send_message(
+                f"No requests for this user {EMOTES.SAD}", ephemeral=True
+            )
+            return
+        await interact.response.defer(thinking=True)
+        top_list = nlargest(top_n, requested_songs.items(), key=lambda item: item[1])
+        title = f"### 🏆 Top {top_n} Songs Requested by {user.mention} 🏆\n"
+        await self.send_song_list(title, top_list, "requested", interact)
