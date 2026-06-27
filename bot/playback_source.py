@@ -115,7 +115,7 @@ class BufferedOpusSource(PlaybackSource):
 
 
 class DirectOpusStream(BufferedOpusSource):
-    BUFFER_SIZE = 200
+    BUFFER_SIZE = 500
 
     def __init__(self, url: str, radio=False):
         super().__init__(radio)
@@ -167,11 +167,11 @@ class DirectOpusStream(BufferedOpusSource):
             try:
                 with av.open(
                     this.url,
-                    timeout=(3, 3),
+                    timeout=(7, 5),
                     options={
                         "reconnect": "1",
                         "reconnect_streamed": "1",
-                        "reconnect_delay_max": "3",
+                        "reconnect_delay_max": "5",
                     },
                 ) as container:
                     audio_stream = container.streams.audio[0]
