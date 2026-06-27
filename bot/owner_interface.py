@@ -211,8 +211,13 @@ class OwnerCog(commands.Cog):
     @commands.command(hidden=True)
     @commands.is_owner()
     async def latency(self, ctx: commands.Context):
+        message = await ctx.reply(f"Processing {EMOTES.LOADING}")
         latency = self.bot.latency * 1000
         latency = f"{latency:.2f}ms"
+        vc_latency = None
+        if ctx.guild.voice_client:
+            vc_latency = ctx.guild.voice_client.latency * 1000
+            vc_a_latency = ctx.guild.voice_client.average_latency * 1000
         with requests.Session() as session:
             try:
                 response = session.get("https://api.neurokaraoke.com/healthz", timeout=20)
@@ -260,9 +265,13 @@ class OwnerCog(commands.Cog):
                 response_time = response.elapsed.total_seconds() * 1000
                 playing = response.json().get("playing", "")
                 swarmFM = f"`{response_time:.2f}ms` playing: `{playing}`"
-
-        await ctx.reply(
-            f"Bot latency: {latency}\n"
+        if vc_latency is None:
+            voice_latency = "`Not connected`"
+        else:
+            voice_latency = f"c: `{vc_latency:.2f}ms` a: `{vc_a_latency:.2f}ms`"
+        await message.edit(
+            content=f"Bot latency: {latency}\n"
+            f"Voice latency (this server): {voice_latency}\n"
             "## Response times:\n"
             f"- api.neurokaraoke: {neurokaraoke}\n"
             f"- images.neurokaraoke: {neurokaraoke_images}\n"
