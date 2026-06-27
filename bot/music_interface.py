@@ -164,27 +164,32 @@ class MusicCog(commands.Cog):
     @commands.cooldown(1, 10, commands.BucketType.guild)
     async def reconnect(self, ctx: commands.Context):
         """Reset the bot and reconnect to this VC (kills the queue)"""
-        if not ctx.voice_client:
+        if not ctx.voice_client and not ctx.me.voice:
             await ctx.reply(
                 "Bot not running, use /joinvc to invite it to VC. Command allowed only in VC",
                 delete_after=5,
             )
             return
-        if ctx.channel.id != ctx.voice_client.channel.id:
-            await ctx.reply("You can only use this command in VC with the bot", delete_after=5)
+        if ctx.voice_client:
+            channel = ctx.voice_client.channel
+        else:
+            channel = ctx.me.voice.channel
+        if ctx.channel.id != channel.id:
+            await ctx.reply("You can only use this command in VC with the bot", delete_after=10)
             return
         mp = self.get_music_player(ctx)
         self.music_players[ctx.guild.id] = None
         if mp:
             mp.pause()
         self.error_time[ctx.guild.id] = time.time()
-        vc = ctx.voice_client
-        channel = vc.channel
         stats.cache_song(channel.guild.id, mp.current_song)
-        vc.stop()
         await ctx.reply(f"Rebooting voice connection... {EMOTES.LOADING}")
-        await vc.disconnect()
-        await asyncio.sleep(2)
+        if vc := ctx.voice_client:
+            vc.stop()
+            await vc.disconnect(force=True)
+        elif vc := ctx.me.voice:
+            await ctx.guild.change_voice_state(channel=None)
+        await asyncio.sleep(3)
         await channel.connect(reconnect=False)
         await self.start(ctx.channel)
 
@@ -493,7 +498,7 @@ class MusicCog(commands.Cog):
             )
             return
         embed, discord_file = await self.get_song_embed(player.Song(data[0]))
-        vc = interact.guild.voice_client
+        vc = interact.guild.voice_client if interact.guild is not None else None
         view = utils.MISSING
         if vc and self.get_music_player(interact) and interact.channel.id == vc.channel.id:
             view = discord.ui.View(timeout=60)
@@ -987,7 +992,7 @@ class MusicCog(commands.Cog):
                 mp.pause()
                 log.warning("Detected active playback, attempting to resume")
                 await asyncio.sleep(1)
-                if member.guild.voice_client:
+                if member.guild.voice_client or member.voice:
                     log.warning("Already connected to voice?")
                 vc = await before.channel.connect(reconnect=False)
                 # We use play_current so it will continue playing the song
