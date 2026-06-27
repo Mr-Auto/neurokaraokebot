@@ -44,7 +44,8 @@ class RequestButton(ui.Button):
     async def callback(self, interact: discord.Interaction):
         self.song_data["_requested"] = True
         self.disabled = True
-        await interact.response.edit_message(view=self.view)
+        if self.view:
+            await interact.response.edit_message(view=self.view)
         cog = interact.client.get_cog("MusicCog")
         mp: MusicPlayer = cog.music_players.get(interact.guild.id)
         playing_in_str = f"`PAUSED` {EMOTES.PAUSE}"
@@ -57,9 +58,33 @@ class RequestButton(ui.Button):
                 playing_in_str = f"<t:{playing_in}:R>"
         position, song = mp.request_song(self.song_data, interact.user.name)
         stats.song_requested(interact.guild_id, interact.user.id, song.get_id())
-        await interact.channel.send(
-            f"{interact.user.mention} requested: `{song.song_name()}`\nAdded to the queue at position {position}, playing {playing_in_str}"
+        song_name = f"`{song.song_name()}`"
+        if self.view and hasattr(self.view, "request_messages"):
+            data = self.view.request_messages.get(interact.user.id)
+            if data:
+                message: discord.Message = data["message"]
+                song_list: list = data["songlist"]
+                data["count"] += 1
+                song_count = data["count"]
+                if len(song_list) == 5:
+                    song_list[0] = "..."
+                elif len(song_list) > 5:
+                    song_list.pop(1)
+                song_list.append(song_name)
+                message_list = [f"{interact.user.mention} requested `{song_count}` songs:"]
+                message_list.append("\n".join(song_list))
+                message_list.append(f"Last at position {position}, playing {playing_in_str}")
+                await message.edit(content="\n".join(message_list))
+                return
+        message = await interact.channel.send(
+            f"{interact.user.mention} requested: {song_name}\nAdded to the queue at position {position}, playing {playing_in_str}"
         )
+        if self.view and hasattr(self.view, "request_messages"):
+            self.view.request_messages[interact.user.id] = {
+                "message": message,
+                "songlist": [song_name],
+                "count": 1,
+            }
 
 
 class SongLookupView(ui.LayoutView):
@@ -73,6 +98,7 @@ class SongLookupView(ui.LayoutView):
         self.owner_id = owner_id
         self.message = None
         self.name = name
+        self.request_messages = {}
         self.update_view()  # last
 
     async def on_timeout(self):
