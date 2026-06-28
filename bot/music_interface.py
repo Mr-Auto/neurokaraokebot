@@ -283,6 +283,9 @@ class MusicCog(commands.Cog):
                 msg = await ctx.reply(f"Playing right now {emote_str}", embed=embed)
             else:
                 raise
+        finally:
+            if discord_file is not None:
+                discord_file.close()
         if song_remaining is None:
             return
         symbol = embed.description.rfind("🔘")
@@ -403,6 +406,9 @@ class MusicCog(commands.Cog):
                 await ctx.reply(f"Next song: {emote_str}", embed=embed)
             else:
                 raise
+        finally:
+            if discord_file is not None:
+                discord_file.close()
 
     @commands.command(priority=5)
     @cmd_verify()
@@ -525,6 +531,8 @@ class MusicCog(commands.Cog):
                 await repl(embed=embed, view=view)
             else:
                 raise
+        if discord_file is not None and discord_file is not utils.MISSING:
+            discord_file.close()
         if view:
             view.message = await interact.original_response()
 
