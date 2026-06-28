@@ -156,7 +156,7 @@ class StatsCog(commands.GroupCog, group_name="stats"):
             else:
                 song = player.Song(response.json_data)
                 song_embed, discord_file = await music_cog.get_song_embed(
-                    song, None, f"Most requested song ({top_song[1]} times)"
+                    interact.guild_id, song, None, f"Most requested song ({top_song[1]} times)"
                 )
                 if discord_file is None:
                     discord_file = utils.MISSING

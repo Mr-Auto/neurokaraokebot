@@ -259,7 +259,9 @@ class MusicCog(commands.Cog):
             footer = f'Requested by "{requested_by}"'
         if mp.is_paused():
             note = f"Ends `PAUSED` {EMOTES.PAUSE}"
-        embed, discord_file = await self.get_song_embed(current_song, note, footer, song_remaining)
+        embed, discord_file = await self.get_song_embed(
+            ctx.guild.id, current_song, note, footer, song_remaining
+        )
         cover_str = current_song.cover_artists
         cover_by = parse_cover_by(cover_str)
         emote_str = EMOTES.JAM
@@ -380,7 +382,7 @@ class MusicCog(commands.Cog):
             emote_str = next_song.emote()
             discord_file = None
         else:
-            embed, discord_file = await self.get_song_embed(next_song, note, footer)
+            embed, discord_file = await self.get_song_embed(ctx.guild.id, next_song, note, footer)
             cover_by = parse_cover_by(next_song.cover_artists)
             emote_str = EMOTES.JAM
             match cover_by:
@@ -497,7 +499,7 @@ class MusicCog(commands.Cog):
                 f"Unable to fetch data from api.neurokaraoke.com {EMOTES.SAD}", ephemeral=True
             )
             return
-        embed, discord_file = await self.get_song_embed(player.Song(data[0]))
+        embed, discord_file = await self.get_song_embed(interact.guild_id, player.Song(data[0]))
         vc = interact.guild.voice_client if interact.guild is not None else None
         view = utils.MISSING
         if vc and self.get_music_player(interact) and interact.channel.id == vc.channel.id:
@@ -876,6 +878,7 @@ class MusicCog(commands.Cog):
 
     async def get_song_embed(
         self,
+        guild_id: int,
         song: player.Song,
         last_section: str | None = None,
         footer: str | None = None,
@@ -892,7 +895,6 @@ class MusicCog(commands.Cog):
         song_url = song.get_url()
         cover_str = song.cover_artists
         cover_by = parse_cover_by(cover_str)
-
         color = COLORS.EMBED_DEFAULT
         match cover_by:
             case CoverBy.Vedal:
@@ -903,29 +905,29 @@ class MusicCog(commands.Cog):
                 color = COLORS.NEURO
             case CoverBy.Evil:
                 color = COLORS.EVIL
-
-        play_count = song.song_info.get("playCount")
+        song_data = stats.get_songs_cache(guild_id).get(song.get_id(), {})
+        play_count = song_data.get(stats.DataType.SongCount, 0)
+        req_count = song_data.get(stats.DataType.Request, 0)
         song_name = song.song_name()
-        description = ""
+        description_lines = []
         if cover_str:
-            description = f"Cover by {cover_str}\n\n"
-        description += f"Original by {original_by}\n\n"
+            description_lines = [f"Cover by {cover_str}\n"]
+        description_lines.append(f"Original by {original_by}\n")
         if date:
-            description += f"Stream date: {date}"
+            description_lines.append(f"Stream date: {date}")
         if remaining and duration != 0:
             pminutes, pseconds = divmod(round(duration - remaining), 60)
             seg = int((remaining * 10) / duration)
-            description += (
-                f"\n`{pminutes}:{pseconds:02} {'▬'*(10-seg)}🔘{'▬'*seg} {minutes}:{seconds:02}`"
+            description_lines.append(
+                f"`{pminutes}:{pseconds:02} {'▬'*(10-seg)}🔘{'▬'*seg} {minutes}:{seconds:02}`"
             )
-            if play_count:
-                description += f"\n{play_count} plays"
         else:
-            description += f"\n{minutes}:{seconds:02}"
-            if play_count:
-                description += f"  {play_count} plays"
+            description_lines.append(f"{minutes}:{seconds:02}")
+
+        description_lines.append(f"{play_count} plays    {req_count} requests")
         if last_section:
-            description += f"\n\n{last_section}"
+            description_lines.append(f"\n{last_section}")
+        description = "\n".join(description_lines)
         embed = discord.Embed(title=song_name, description=description, color=color, url=song_url)
         discord_file = None
         image_data = await song.get_cover_art(True, self.bot.session)
