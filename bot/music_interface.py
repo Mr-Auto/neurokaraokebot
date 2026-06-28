@@ -146,6 +146,7 @@ class MusicCog(commands.Cog):
             await ctx.reply(f"Paused ⏸️ {EMOTES.PAUSE}")
             if mp.update_status:
                 await self.set_voice_status(vc.channel, mp.current_song.song_name(), True)
+        await ctx.guild.change_voice_state(channel=ctx.channel, self_mute=True)
 
     @commands.command(priority=2, aliases=("▶️",))
     @cmd_verify()
@@ -159,6 +160,7 @@ class MusicCog(commands.Cog):
             await ctx.reply(f"Resumed ▶️ {EMOTES.JAM}")
             if mp.update_status:
                 await self.set_voice_status(vc.channel, mp.current_song.song_name(), False)
+        await ctx.guild.change_voice_state(channel=ctx.channel, self_mute=False)
 
     @commands.command()
     @commands.cooldown(1, 10, commands.BucketType.guild)
@@ -832,6 +834,7 @@ class MusicCog(commands.Cog):
             if mp.update_status:
                 song_name = mp.current_song.song_name()
                 await self.set_voice_status(vc.channel, song_name, start_paused)
+            await vc.guild.change_voice_state(channel=vc.channel, self_mute=start_paused)
 
     def playback_end(self, guild_id: int, error):
         if error:
@@ -1057,6 +1060,7 @@ class MusicCog(commands.Cog):
             if not vc:
                 log.warning(f"Bot has MusicPlayer but it's not in VC rn {guild.name}[{guild.id}]")
                 mp.pause()
+                await guild.change_voice_state(channel=None)
                 continue
             stats.update(guild.id, mp.current_song, self.get_members_listening(vc.channel))
             if mp.is_paused() or vc.is_paused():
@@ -1078,6 +1082,7 @@ class MusicCog(commands.Cog):
                     mp.pause()
                     if mp.update_status:
                         await self.set_voice_status(vc.channel, mp.current_song.song_name(), True)
+                    await guild.change_voice_state(channel=vc.channel, self_mute=True)
                     await vc.channel.send(f"No one's listening {EMOTES.SAD}\nPaused ⏸️")
 
     @check_alone_status.before_loop
