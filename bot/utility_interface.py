@@ -94,27 +94,42 @@ class StatsCog(commands.GroupCog, group_name="stats"):
         return True
 
     @app_commands.command()
-    async def me(self, interact: discord.Interaction):
+    async def me(
+        self, interact: discord.Interaction, scope: typing.Literal["local", "global"] = "local"
+    ):
         """Check your own stats"""
-        await self.user.callback(self, interact, interact.user)
+        global_stats = False
+        if scope == "global":
+            global_stats = True
+        await self.user_stats(interact, interact.user, global_stats)
 
     @app_commands.command()
     async def user(self, interact: discord.Interaction, user: discord.Member):
         """Check stats of a server member"""
+        await self.user_stats(interact, user)
+
+    async def user_stats(
+        self, interact: discord.Interaction, user: discord.Member, global_stats=False
+    ):
         if user.id == interact.client.user.id:
             await self.server.callback(self, interact)
             return
         await interact.response.defer(thinking=True)
-        data = stats.get_users_cache(interact.guild_id).get(str(user.id), {})
         music_cog = interact.client.get_cog("MusicCog")
         music_cog.update_stats(interact.guild_id)
-        listening_time = data.get(stats.DataType.Time, 0)
-        listening_time += stats.get_user_current_time(interact.guild_id, user.id)
-        request = data.get(stats.DataType.Request, {})
-        request_num = sum(request.values())
-        songs_listened_to = data.get(stats.DataType.SongCount, 0)
+        listening_time = stats.get_user_current_time(interact.guild_id, user.id)
+        request_num = 0
+        songs_listened_to = 0
+        guilds = [interact.guild_id] if not global_stats else stats._cache_data.keys()
+        for guild_id in guilds:
+            data = stats.get_users_cache(guild_id).get(str(user.id), {})
+            listening_time += data.get(stats.DataType.Time, 0)
+            request = data.get(stats.DataType.Request, {})
+            request_num += sum(request.values())
+            songs_listened_to += data.get(stats.DataType.SongCount, 0)
+        global_str = " global" if global_stats else ""
         message = (
-            f"### {user.mention} stats:\n\n"
+            f"### {user.mention}{global_str} stats:\n\n"
             f"Total time listening: `{format_time_string(listening_time)}`\n"
             f"Listened to: `{songs_listened_to}` songs\n"
             f"Requested: `{request_num}` songs"
@@ -130,7 +145,7 @@ class StatsCog(commands.GroupCog, group_name="stats"):
                 top_song = (song_id, count)
         embeds = [stats_embed]
         discord_file = utils.MISSING
-        if top_song:
+        if top_song and not global_stats:
             response = await interact.client.fetch_json_data(SONG_API + top_song[0])
             if response.error or response.status != 200 or not isinstance(response.json_data, dict):
                 embeds.append(
