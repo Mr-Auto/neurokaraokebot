@@ -244,8 +244,11 @@ class DirectOpusStream(BufferedOpusSource):
                 if this.radio:
                     this.log.info("lost connection, attempting reconnect (InvalidDataError)")
                 else:
-                    this.log.error("InvalidDataError: ending playback")  # maybe reconnect as well?
-                    this.end = True
+                    if error_count >= 2:
+                        this.log.error("InvalidDataError: ending playback")
+                        this.end = True
+                    else:
+                        this.log.info("InvalidDataError: attempting reconnect")
             except av.OSError as e:
                 # handles av.TimeoutError, av.ConnectionResetError av.BrokenPipeError and more
                 this.log.info(f"({e.strerror}) lost connection, attempting reconnect")
