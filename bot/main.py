@@ -6,7 +6,7 @@ import os
 import aiohttp
 from aiohttp import web
 from dotenv import load_dotenv
-from discord import Intents, Activity, ActivityType, StatusDisplayType, Interaction
+from discord import Intents, Activity, ActivityType, StatusDisplayType, Interaction, InteractionType
 from discord import app_commands
 from discord.ext import commands
 
@@ -123,7 +123,7 @@ class MyBot(commands.Bot):
         )
 
     async def interaction_check(self, interact: Interaction) -> bool:
-        if interact.command:
+        if interact.type is InteractionType.application_command and interact.command:
             log.info(
                 f"Command: '/{interact.command.qualified_name}' used by: {interact.user}[{interact.user.id}] in: ({interact.guild} / {interact.channel})",
             )
