@@ -933,7 +933,7 @@ class MusicCog(commands.Cog):
                 f"`{pminutes}:{pseconds:02} {'▬'*(10-seg)}🔘{'▬'*seg} {minutes}:{seconds:02}`"
             )
         else:
-            description_lines.append(f"{minutes}:{seconds:02}")
+            description_lines.append(f"Duration: {minutes}:{seconds:02}")
 
         description_lines.append(f"{play_count} plays    {req_count} requests")
         if last_section:

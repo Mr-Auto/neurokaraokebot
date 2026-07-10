@@ -14,6 +14,8 @@ class DataType(enum.StrEnum):
     SongCount = "song_count"
     Request = "requests"
     Songs = "songs"
+    Points = "points"
+    GuessSong = "guess_song"
 
 
 @dataclass
@@ -216,6 +218,13 @@ def song_requested(guild_id: int, user_id: int, song_id: str):
     _increment(user_cache, DataType.Request, song_id)
     songs_cache = get_songs_cache(guild_id)
     _increment(songs_cache, song_id, DataType.Request)
+
+
+def give_points(guild_id: int, user_id: int, points: int, game_state: int):
+    users_cache = get_users_cache(guild_id)
+    _increment(users_cache, user_id, DataType.Points, points)
+    user_cache = users_cache[str(user_id)]
+    _increment(user_cache, DataType.GuessSong, str(game_state))
 
 
 def get_top(guild_id: int, top_n: int, comparison: DataType) -> dict[int, list[str, int]]:

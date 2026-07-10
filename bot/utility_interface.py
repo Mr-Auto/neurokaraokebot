@@ -120,6 +120,7 @@ class StatsCog(commands.GroupCog, group_name="stats"):
         listening_time = stats.get_user_current_time(interact.guild_id, user.id)
         request_num = 0
         songs_listened_to = 0
+        points = 0
         guilds = [interact.guild_id] if not global_stats else stats._cache_data.keys()
         for guild_id in guilds:
             data = stats.get_users_cache(guild_id).get(str(user.id), {})
@@ -127,15 +128,20 @@ class StatsCog(commands.GroupCog, group_name="stats"):
             request = data.get(stats.DataType.Request, {})
             request_num += sum(request.values())
             songs_listened_to += data.get(stats.DataType.SongCount, 0)
+            points += data.get(stats.DataType.Points, 0)
         global_str = " global" if global_stats else ""
         message = (
             f"### {user.mention}{global_str} stats:\n\n"
             f"Total time listening: `{format_time_string(listening_time)}`\n"
             f"Listened to: `{songs_listened_to}` songs\n"
-            f"Requested: `{request_num}` songs"
+            f"Requested: `{request_num}` songs\n"
+            f"Points: `{points}`"
         )
         stats_embed = discord.Embed(description=message, color=user.color)
-        if user.display_avatar:
+        if global_stats:
+            if user.avatar:
+                stats_embed.set_thumbnail(url=user.avatar.url)
+        elif user.display_avatar:
             stats_embed.set_thumbnail(url=user.display_avatar.url)
         top_song = None
         for song_id, count in request.items():
@@ -165,7 +171,7 @@ class StatsCog(commands.GroupCog, group_name="stats"):
 
     @app_commands.command()
     async def server(self, interact: discord.Interaction):
-        """Check stats of the server"""
+        """Check server stats"""
         data = stats._cache_data.get(str(interact.guild_id), {})
         interact.client.get_cog("MusicCog").update_stats(interact.guild_id)
         playing_time = data.get(stats.DataType.Time, 0)
@@ -186,6 +192,28 @@ class StatsCog(commands.GroupCog, group_name="stats"):
             embed.set_thumbnail(url=interact.guild.icon.url)
         await interact.response.send_message(embed=embed)
 
+    @app_commands.command()
+    async def guesssong(self, interact: discord.Interaction, user: discord.Member):
+        """Stats of the guess song minigame"""
+        data = stats.get_users_cache(interact.guild_id).get(str(user.id), {})
+        guesssong_data = data.get(stats.DataType.GuessSong)
+        if guesssong_data is None:
+            await interact.response.send_message(
+                f"{user.mention} haven't played guess song yet", ephemeral=True
+            )
+            return
+        surfix = ("st", "nd", "rd", "th", "th")
+        message_list = [f"### {user.mention} guess song stats:\n"]
+        for i in range(5):
+            score = guesssong_data.get(str(i), 0)
+            postfix = "s" if score != 1 else ""
+            message_list.append(f"- **{i+1}{surfix[i]}** try `{score}` time{postfix}")
+        await interact.response.defer(thinking=True)
+        embed = discord.Embed(description="\n".join(message_list), color=user.color)
+        if user.display_avatar:
+            embed.set_thumbnail(url=user.display_avatar.url)
+        await interact.followup.send(embed=embed)
+
     @top.command()
     async def users(
         self,
@@ -194,10 +222,11 @@ class StatsCog(commands.GroupCog, group_name="stats"):
             "time",
             "song count",
             "request count",
+            "points",
         ],
         top_n: app_commands.Range[int, 3, 20] = 5,
     ):
-        """Show top members by*"""
+        """Show top members by X"""
         match top_by:
             case "time":
                 top_comparison = stats.DataType.Time
@@ -205,7 +234,9 @@ class StatsCog(commands.GroupCog, group_name="stats"):
                 top_comparison = stats.DataType.SongCount
             case "request count":
                 top_comparison = stats.DataType.Request
-        if top_comparison != stats.DataType.Request:
+            case "points":
+                top_comparison = stats.DataType.Points
+        if top_comparison == stats.DataType.Time:
             interact.client.get_cog("MusicCog").update_stats(interact.guild_id)
         top = stats.get_top(interact.guild_id, top_n, top_comparison)
         lines = []

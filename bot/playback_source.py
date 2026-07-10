@@ -526,3 +526,44 @@ class RawPCMSource(PlaybackSource):
 
     def close(self):
         self.buffer.close()
+
+
+class SeekableOpusSource(RAMBufferOpusSource):
+    def __init__(self, data: bytes):
+        self.log = ClassLogger(log, self)
+        self.file_buffer = io.BytesIO(data)
+        if self.file_buffer.getbuffer().nbytes < 10000:
+            self.file_buffer.close()
+            raise RuntimeError(f"{SeekableOpusSource.__name__}: Got less then 10KB")
+        self.paused = False
+        self.container = av.open(self.file_buffer)
+        audio_stream = self.container.streams.audio[0]
+        self.time_base = audio_stream.time_base
+        self.duration_sec = float(audio_stream.duration * self.time_base)
+        self.packet_generator = self.container.demux(audio_stream)
+        self.current_pts = 0
+
+    def seek(self, seconds: float):
+        timestamp = int(seconds / self.time_base)
+        self.container.seek(timestamp, stream=self.container.streams.audio[0])
+        while True:
+            data = self.read()
+            if len(data) == 0 or self.current_pts >= timestamp:
+                break
+
+    def sub_audio(self, duration_sec: float) -> io.BytesIO:
+        buf = io.BytesIO()
+        end_timestamp = int(duration_sec / self.time_base) + self.current_pts
+        with av.open(buf, mode="w", format="ogg") as out:
+            out_stream = out.add_stream_from_template(self.container.streams.audio[0])
+            for packet in self.packet_generator:
+                if packet.pts is None:
+                    continue
+                if packet.pts >= end_timestamp:
+                    break
+                packet.pts -= self.current_pts
+                packet.dts -= self.current_pts
+                packet.stream = out_stream
+                out.mux(packet)
+        buf.seek(0)
+        return buf

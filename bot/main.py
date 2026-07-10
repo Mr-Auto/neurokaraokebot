@@ -14,6 +14,7 @@ import stats
 from music_interface import MusicCog, NotAllowedError
 from owner_interface import OwnerCog
 from utility_interface import UtilityCog
+from guesssong_interface import GuessSongCog
 from config import EMOTES
 
 log = logging.getLogger()
@@ -56,6 +57,7 @@ class MyBot(commands.Bot):
         await self.add_cog(MusicCog(self))
         await self.add_cog(OwnerCog(self))
         await self.add_cog(UtilityCog(self))
+        await self.add_cog(GuessSongCog(self))
         self.before_invoke(self.before_command_invoke)
         self.tree.on_error = self.on_app_command_error
         self.tree.interaction_check = self.interaction_check

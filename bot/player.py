@@ -119,14 +119,14 @@ class Song:
         return self._get_artist("originalArtists")
 
     def _get_artist(self, artist_type: str) -> str:
-        original_str = ""
+        artists_str = ""
         artists_list = self.song_info.get(artist_type)
         if artists_list:
             if isinstance(artists_list[0], dict):
-                original_str = " & ".join(artist["name"] for artist in artists_list)
+                artists_str = " & ".join(artist["name"] for artist in artists_list)
             else:
-                original_str = " & ".join(artists_list)
-        return original_str
+                artists_str = " & ".join(artists_list)
+        return artists_str
 
     async def get_cover_art(
         self, download_animated=False, session: aiohttp.ClientSession = None
