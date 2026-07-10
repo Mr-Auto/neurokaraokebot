@@ -42,23 +42,29 @@ _playing_start: dict[int, ServerPlayingData | None] = {}
 _cache_data: dict[str, dict] = {}
 # _cache_data structure:
 #
-# guild_id
+# guild_id (str)
 # |
-# |- total_time: float
-# |- song_count: int (how many played)
-# |
+# |-total_time: float
 # |-requests
 # |  |
-# |  |-song_id: int (how many times requested)
+# |  |-song_id (str)
+# |     |
+# |     |-song_count: int
+# |     |-requests: int
 # |
 # |-users
 #    |
-#    |-user_id
+#    |-user_id (str)
 #       |
 #       |-total_time: float
+#       |-points: int
+#       |-guess_song
+#       |   |
+#       |   |-state (int): int
+#       |
 #       |-songs
 #           |
-#           |-song_id
+#           |-song_id: str
 #               |
 #               |-song_count: int
 #               |-requests: int
