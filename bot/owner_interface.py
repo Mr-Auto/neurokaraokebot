@@ -60,12 +60,26 @@ class OwnerCog(commands.Cog):
             recent_id != self.setlist_data["last_setlist"]
             or is_temporary != self.setlist_data["temporary"]
         ):
-            self.setlist_data["last_setlist"] = recent_id
-            self.setlist_data["temporary"] = is_temporary
             temp = " (Temporary Stream Audio)" if is_temporary else ""
             url = PLAYLIST_URL + recent_id
-            notif_text = f"{EMOTES.DINKDONK} New setlist uploaded{temp} {EMOTES.DINKDONK}\n{url}"
-            for guild_id, channel_id in list(self.setlist_data["notify"].items()):
+            if recent_id == self.setlist_data["last_setlist"]:
+                notif_temp = f"Setlist updated{temp} {EMOTES.DINKDONK}\n{url}"
+            else:
+                notif_temp = f"New setlist uploaded{temp} {EMOTES.DINKDONK}\n{url}"
+            self.setlist_data["last_setlist"] = recent_id
+            self.setlist_data["temporary"] = is_temporary
+            for guild_id, data in list(self.setlist_data["notify"].items()):
+                if isinstance(data, str):
+                    self.setlist_data["notify"][guild_id] = {"channel": data}
+                    channel_id = data
+                    role = None
+                else:
+                    channel_id = data.get("channel")
+                    role = data.get("role")
+                if role is None:
+                    notif_text = f"{EMOTES.DINKDONK} {notif_temp}"
+                else:
+                    notif_text = f"{EMOTES.DINKDONK} <@&{role}>{notif_temp}"
                 channel = self.bot.get_channel(int(channel_id))
                 try:
                     if channel is None:
@@ -331,7 +345,10 @@ class OwnerCog(commands.Cog):
 
     @commands.command()
     async def setlistupdates(
-        self, ctx: commands.Context, channel: typing.Union[discord.TextChannel, str] = None
+        self,
+        ctx: commands.Context,
+        channel: typing.Union[discord.TextChannel, str] = None,
+        role: discord.Role = None,
     ):
         """Set/Change channel receiving Setlist updates (server owner only)"""
         if ctx.guild.owner_id == ctx.author.id:
@@ -341,12 +358,32 @@ class OwnerCog(commands.Cog):
                 await ctx.reply(f"Removed setlist notification for this server")
                 self.save_setlist_data()
                 return
-            channel_id = self.setlist_data["notify"].get(str(ctx.guild.id))
-            if channel is None or (isinstance(channel, str) and channel.lower() != "clear"):
+            data = self.setlist_data["notify"].get(str(ctx.guild.id))
+            if channel is None or isinstance(channel, str):
                 channel_info = ""
-                if channel_id:
-                    channel_info = f"\nCurrently set to channel <#{channel_id}>"
-                await ctx.reply(f"Usage `!setlistupdates #channel_name / clear`{channel_info}")
+                previous_channel_id = None
+                if data:
+                    if isinstance(data, str):
+                        previous_channel_id = data
+                        previous_role_id = None
+                    else:
+                        previous_channel_id = data.get("channel")
+                        previous_role_id = data.get("role")
+                if previous_role_id is None:
+                    role_str = "no ping role"
+                else:
+                    previous_role = ctx.guild.get_role(int(previous_role_id))
+                    if previous_role is None:
+                        role_str = "unknown role"
+                    else:
+                        role_str = f"`{previous_role.name}` role"
+                if previous_channel_id:
+                    channel_info = (
+                        f"\nCurrently set to channel <#{previous_channel_id}> and {role_str}"
+                    )
+                await ctx.reply(
+                    f"Usage `!setlistupdates [#channel_name / clear] [role to ping (optional)]`{channel_info}"
+                )
                 return
             bot_member = ctx.guild.get_member(ctx.bot.user.id)
             if bot_member is None:
@@ -365,11 +402,20 @@ class OwnerCog(commands.Cog):
             if not permissions.view_channel:
                 await ctx.reply(f"I don't have permissions to view this channel {EMOTES.SAD}")
                 return
-            self.setlist_data["notify"][str(ctx.guild.id)] = str(channel.id)
-            if channel_id is None:
-                await ctx.reply(f"Succesfully set {channel.mention} for receiving setlist updates")
-            else:
-                await ctx.reply(
-                    f"Succesfully changed setlist updates from <#{channel_id}> to {channel.mention} "
-                )
+            if role is not None:
+                if not (role.mentionable or permissions.mention_everyone):
+                    await ctx.reply(
+                        f"Role needs to be `mentionable` or I need permission to mention all roles {EMOTES.SILLY}"
+                    )
+                    return
+            guild_data = {}
+            guild_data["channel"] = str(channel.id)
+            role_str = " (no ping role)"
+            if role is not None:
+                guild_data["role"] = str(role.id)
+                role_str = f" and ping role `{role.name}`"
+            self.setlist_data["notify"][str(ctx.guild.id)] = guild_data
+            await ctx.reply(
+                f"Succesfully set {channel.mention}{role_str} for receiving setlist updates"
+            )
             self.save_setlist_data()
