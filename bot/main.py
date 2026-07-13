@@ -6,7 +6,8 @@ import os
 import aiohttp
 from aiohttp import web
 from dotenv import load_dotenv
-from discord import Intents, Activity, ActivityType, StatusDisplayType, Interaction, InteractionType
+import discord
+from discord import Intents, Interaction, InteractionType
 from discord import app_commands
 from discord.ext import commands
 
@@ -36,13 +37,13 @@ class MyBot(commands.Bot):
             with open("data/activity_status.txt") as f:
                 status = f.read()
             status = status.strip()
-        except:
+        except Exception:
             pass
-        activity = Activity(
+        activity = discord.Activity(
             name="67",
-            type=ActivityType.custom,
+            type=discord.ActivityType.custom,
             state=status,
-            status_display_type=StatusDisplayType.state,
+            status_display_type=discord.StatusDisplayType.state,
         )
         super().__init__(
             command_prefix=commands.when_mentioned_or("!"),
@@ -83,7 +84,7 @@ class MyBot(commands.Bot):
                 await channel.send(EMOTES.WAVE)
                 break
 
-    async def on_command_error(self, ctx: commands.Context, error: commands.CommandError):
+    async def on_command_error(_, ctx: commands.Context, error: commands.CommandError):
         if isinstance(error, (commands.CommandNotFound, commands.CheckFailure)):
             return
 
@@ -106,7 +107,7 @@ class MyBot(commands.Bot):
 
         log.error(f"on_command_error: '!{ctx.command}': ", exc_info=error)
 
-    async def on_app_command_error(self, interact: Interaction, error: app_commands.AppCommandError):
+    async def on_app_command_error(_, interact: Interaction, error: app_commands.AppCommandError):
         if interact.response.is_done():
             repl = interact.followup.send
         else:
@@ -119,12 +120,12 @@ class MyBot(commands.Bot):
             await repl(f"Something went wrong {EMOTES.SAD}", ephemeral=True)
             log.exception(f"Unhandled tree error: {error}")
 
-    async def before_command_invoke(self, ctx):
+    async def before_command_invoke(_, ctx):
         log.info(
             f"Command: '!{ctx.command}' used by: {ctx.author}[{ctx.author.id}] in: ({ctx.guild} / {ctx.channel})"
         )
 
-    async def interaction_check(self, interact: Interaction) -> bool:
+    async def interaction_check(_, interact: Interaction) -> bool:
         if interact.type is InteractionType.application_command and interact.command:
             log.info(
                 f"Command: '/{interact.command.qualified_name}' used by: {interact.user}[{interact.user.id}] in: ({interact.guild} / {interact.channel})",

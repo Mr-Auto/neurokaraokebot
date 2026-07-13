@@ -42,14 +42,6 @@ def parse_cover_by(cover_str: str) -> CoverBy:
         return CoverBy.Unknown
 
 
-def is_number(s: str) -> bool:
-    try:
-        float(s)
-        return True
-    except ValueError:
-        return False
-
-
 class NotAllowedError(commands.CommandError):
     pass
 
@@ -314,15 +306,13 @@ class MusicCog(commands.Cog):
             line_end = symbol
         description_end = embed.description[line_end + 1 :]
         duration = song_ref().duration
-        counter = 0
-        while True:
+        for _ in range(1100):
             await asyncio.sleep(1.6)
             if (song := song_ref()) is not None:
                 remaining = song.remaining()
                 song = None
             else:
                 return
-
             if remaining is None:
                 return
             pminutes, pseconds = divmod(round(duration - remaining), 60)
@@ -333,9 +323,6 @@ class MusicCog(commands.Cog):
             except discord.NotFound:
                 return
             if remaining <= 0:
-                return
-            counter += 1
-            if counter > 1000:
                 return
 
     @commands.command(priority=6, aliases=("ns",))
@@ -420,17 +407,18 @@ class MusicCog(commands.Cog):
         if offset < 0 or offset * 10 >= queue_size:
             await ctx.reply(f"No [1-{(queue_size + 9) // 10}] {EMOTES.STARE}")
             return
-
-        description = ""
+        description_list = []
         if page == 1:
-            description = f" - ▶️ __{mp.current_song.song_name()}__ 🎵\n-# (playing right now)\n"
+            description_list = [
+                f" - ▶️ __{mp.current_song.song_name()}__ 🎵\n-# (playing right now)"
+            ]
         # Show max 10 in a queue
         for song in islice(chain(mp.requests_cache, mp.cache), offset * 10, offset * 10 + 10):
             if song in mp.requests_cache:
-                description += f"- **{song.song_name()}**\n"
+                description_list.append(f"- **{song.song_name()}**")
             else:
-                description += f"- {song.song_name()}\n"
-
+                description_list.append(f"- {song.song_name()}")
+        description = "\n".join(description_list)
         embed = discord.Embed(title=f"📜 Queue", description=description, color=COLORS.QUEUE)
         embed.set_footer(text=f"(page {page}/{(queue_size + 9) // 10})")
         await ctx.reply(embed=embed)
@@ -465,6 +453,7 @@ class MusicCog(commands.Cog):
                 truncated = search_string[:char_limit] + "..."
             else:
                 truncated = search_string
+            truncated = truncated.replace("`", "").replace("\r", "").replace("\n", " ")
             await ctx.reply(f"No results for `{truncated}` {EMOTES.SIDE_EYE}")
             return
 
@@ -573,6 +562,7 @@ class MusicCog(commands.Cog):
                 truncated = search_string[:char_limit] + "..."
             else:
                 truncated = search_string
+            truncated = truncated.replace("`", "").replace("\r", "").replace("\n", " ")
             await ctx.reply(f"No results for `{truncated}` {EMOTES.SIDE_EYE}")
             return
 

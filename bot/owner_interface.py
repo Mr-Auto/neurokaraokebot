@@ -33,7 +33,7 @@ class OwnerCog(commands.Cog):
                 self.setlist_data = {
                     "last_setlist": "",
                     "temporary": False,
-                    "notify": {},  # {"guild_id": "channel_id"}
+                    "notify": {},  # {"guild_id": {"channel": id, "role": id}}
                 }
         return self.setlist_data
 
@@ -79,7 +79,7 @@ class OwnerCog(commands.Cog):
                 if role is None:
                     notif_text = f"{EMOTES.DINKDONK} {notif_temp}"
                 else:
-                    notif_text = f"{EMOTES.DINKDONK} <@&{role}>{notif_temp}"
+                    notif_text = f"{EMOTES.DINKDONK} <@&{role}> {notif_temp}"
                 channel = self.bot.get_channel(int(channel_id))
                 try:
                     if channel is None:
@@ -376,7 +376,8 @@ class OwnerCog(commands.Cog):
                     if previous_role is None:
                         role_str = "unknown role"
                     else:
-                        role_str = f"`{previous_role.name}` role"
+                        role_name = previous_role.name.replace("`", "").replace("\r", "").replace("\n", " ")
+                        role_str = f"`{role_name}` role"
                 if previous_channel_id:
                     channel_info = (
                         f"\nCurrently set to channel <#{previous_channel_id}> and {role_str}"
@@ -413,7 +414,8 @@ class OwnerCog(commands.Cog):
             role_str = " (no ping role)"
             if role is not None:
                 guild_data["role"] = str(role.id)
-                role_str = f" and ping role `{role.name}`"
+                role_name = role.name.replace("`", "").replace("\r", "").replace("\n", " ")
+                role_str = f" and ping role `{role_name}`"
             self.setlist_data["notify"][str(ctx.guild.id)] = guild_data
             await ctx.reply(
                 f"Succesfully set {channel.mention}{role_str} for receiving setlist updates"
