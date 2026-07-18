@@ -14,6 +14,7 @@ from itertools import chain, islice
 import player
 import stats
 from config import *
+from utils import EMOTES
 from song_lookup_view import SongLookupView, RequestButton, SetlistsView
 
 log = logging.getLogger()

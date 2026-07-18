@@ -8,8 +8,8 @@ from discord import app_commands, ui, utils
 
 import stats
 import player
-from config import EMOTES, SONG_API
-from utils import CustomResponse
+from config import SONG_API
+from utils import CustomResponse, EMOTES
 
 log = logging.getLogger()
 

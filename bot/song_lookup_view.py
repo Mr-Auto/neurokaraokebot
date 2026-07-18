@@ -5,10 +5,10 @@ from discord import ui
 from enum import Enum, auto
 from datetime import datetime
 
-from utils import CustomResponse
+from utils import CustomResponse, EMOTES
 import stats
 from player import MusicPlayer, Song
-from config import EMOTES, PLAYLIST_URL, PLAYLIST_API, IMAGES_URL
+from config import PLAYLIST_URL, PLAYLIST_API, IMAGES_URL
 
 log = logging.getLogger()
 

@@ -15,8 +15,7 @@ from music_interface import MusicCog, NotAllowedError
 from owner_interface import OwnerCog
 from utility_interface import UtilityCog
 from guesssong_interface import GuessSongCog
-from config import EMOTES
-from utils import MyTimedRotatingFileHandler, CustomResponse
+from utils import MyTimedRotatingFileHandler, CustomResponse, EMOTES
 
 log = logging.getLogger()
 

@@ -14,8 +14,8 @@ from discord import app_commands, ui, utils
 
 import player
 import stats
-from config import EMOTES, RANDOM_API, STORAGE_URL
-from utils import CustomResponse, verify_message
+from config import RANDOM_API, STORAGE_URL
+from utils import CustomResponse, verify_message, EMOTES
 
 log = logging.getLogger()
 SongName = namedtuple("SongName", ["choice", "lower"])

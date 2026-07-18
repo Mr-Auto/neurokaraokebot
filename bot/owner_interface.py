@@ -11,7 +11,7 @@ import requests
 import stats
 import player
 from config import *
-from utils import CustomResponse
+from utils import CustomResponse, EMOTES
 
 log = logging.getLogger()
 

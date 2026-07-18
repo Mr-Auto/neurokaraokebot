@@ -11,6 +11,7 @@ from collections import deque
 from itertools import chain, islice
 from config import *
 from playback_source import *
+from utils import EMOTES
 
 log = logging.getLogger()
 MODE = 1
