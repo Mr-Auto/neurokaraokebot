@@ -9,6 +9,7 @@ from discord import app_commands, ui, utils
 import stats
 import player
 from config import EMOTES, SONG_API
+from utils import CustomResponse
 
 log = logging.getLogger()
 
@@ -152,7 +153,7 @@ class StatsCog(commands.GroupCog, group_name="stats"):
         embeds = [stats_embed]
         discord_file = utils.MISSING
         if top_song and not global_stats:
-            response = await interact.client.fetch_json_data(SONG_API + top_song[0])
+            response: CustomResponse = await interact.client.fetch_json_data(SONG_API + top_song[0])
             if response.error or response.status != 200 or not isinstance(response.json_data, dict):
                 embeds.append(
                     discord.Embed(
@@ -266,7 +267,7 @@ class StatsCog(commands.GroupCog, group_name="stats"):
     ):
         reply = interact.followup.send
         tasks = [interact.client.fetch_json_data(SONG_API + song_id) for song_id, _ in top_list]
-        api_results = await asyncio.gather(*tasks)
+        api_results: list[CustomResponse] = await asyncio.gather(*tasks)
         for result in api_results:
             if result.error is not None:
                 await reply(f"Could not get data for all the songs {EMOTES.SAD}: {result.error}")

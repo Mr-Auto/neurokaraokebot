@@ -15,20 +15,9 @@ from discord import app_commands, ui, utils
 import player
 import stats
 from config import EMOTES, RANDOM_API, STORAGE_URL
+from utils import CustomResponse, verify_message
 
 log = logging.getLogger()
-
-
-async def verify_message(channel: discord.abc.Messageable, message_id: int):
-    try:
-        msg = await channel.fetch_message(message_id)
-        return bool(msg.id)
-    except discord.NotFound:
-        return False
-    except (discord.Forbidden, discord.HTTPException):
-        return None
-
-
 SongName = namedtuple("SongName", ["choice", "lower"])
 
 
@@ -228,7 +217,7 @@ class GuessSongCog(commands.Cog, group_name="guesssong"):
             return
         await interact.response.defer(thinking=True)
         reply = interact.followup.send
-        response = await interact.client.fetch_json_data(RANDOM_API)
+        response: CustomResponse = await interact.client.fetch_json_data(RANDOM_API)
         if response.error:
             await reply(
                 f"Could not get data from neurokaraoke.com {EMOTES.SAD}\n(`{response.error}`)",

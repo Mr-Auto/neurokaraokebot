@@ -5,6 +5,7 @@ from discord import ui
 from enum import Enum, auto
 from datetime import datetime
 
+from utils import CustomResponse
 import stats
 from player import MusicPlayer, Song
 from config import EMOTES, PLAYLIST_URL, PLAYLIST_API, IMAGES_URL
@@ -221,7 +222,7 @@ class SetlistButton(ui.Button):
         return True
 
     async def callback(self, interact: discord.Interaction):
-        response = await interact.client.fetch_json_data(
+        response: CustomResponse = await interact.client.fetch_json_data(
             PLAYLIST_API + self.data["id"], headers={"x-guest-id": "69"}
         )
         if response.error:

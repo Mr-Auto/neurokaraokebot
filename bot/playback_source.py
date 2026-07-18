@@ -10,14 +10,9 @@ import av.error
 import discord
 import config
 from collections import deque
+from utils import ClassLogger
 
 log = logging.getLogger()
-
-
-class ClassLogger(logging.LoggerAdapter):
-    def __init__(self, logger, obj):
-        classname = f"{obj.__class__.__name__}: " if obj else ""
-        super().__init__(logger, {"classspecific": classname})
 
 
 class PlaybackSource(discord.AudioSource):

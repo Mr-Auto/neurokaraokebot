@@ -1,7 +1,6 @@
 import asyncio
 from dataclasses import dataclass
 import logging
-from logging.handlers import TimedRotatingFileHandler
 import os
 import aiohttp
 from aiohttp import web
@@ -17,16 +16,9 @@ from owner_interface import OwnerCog
 from utility_interface import UtilityCog
 from guesssong_interface import GuessSongCog
 from config import EMOTES
+from utils import MyTimedRotatingFileHandler, CustomResponse
 
 log = logging.getLogger()
-
-
-@dataclass
-class CustomResponse:
-    json_data: str | None
-    status: int | None
-    error: str | None
-    url: str
 
 
 class MyBot(commands.Bot):
@@ -169,26 +161,16 @@ class MyBot(commands.Bot):
                 await asyncio.sleep(0.5)
 
 
-def my_namer(default_name: str) -> str:
-    date_part = default_name.split(".")[-1]
-    return f"logs/{date_part}.log"
-
-
 os.makedirs("logs", exist_ok=True)
 os.makedirs("data", exist_ok=True)
 stats.load()
-handler = TimedRotatingFileHandler("logs/current.log", "midnight", 1, 30, "utf-8")
-handler.namer = my_namer
-formatter = logging.Formatter(
-    "[{asctime}] [{levelname:<8} {module:>15}] {classspecific}{message}",
-    style="{",
-    defaults={"classspecific": ""},
-)
-handler.setFormatter(formatter)
+handler = MyTimedRotatingFileHandler("logs/current.log", "midnight", 1, 30, "utf-8")
 bot = MyBot()
 print("Starting up")
 load_dotenv()
-bot.run(os.getenv("BOT_TOKEN"), log_handler=handler, log_formatter=formatter, root_logger=True)
+bot.run(
+    os.getenv("BOT_TOKEN"), log_handler=handler, log_formatter=handler.formatter, root_logger=True
+)
 stats.save(True)
 print("Shutting down")
 log.info("Shutting down\n\n")
