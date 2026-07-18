@@ -1,6 +1,6 @@
 import json
 import random
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass
 from logging.handlers import TimedRotatingFileHandler
 from logging import Formatter, LoggerAdapter
 import discord
@@ -56,119 +56,127 @@ async def verify_message(channel: discord.abc.Messageable, message_id: int):
         return None
 
 
-@dataclass
-class _EmoteCollection:
-    SILLY_LIST: list[str] = field(default_factory=list)
-    SAD_LIST: list[str] = field(default_factory=list)
-    SIDE_EYE_LIST: list[str] = field(default_factory=list)
-    STARE_LIST: list[str] = field(default_factory=list)
-    HAPPY_LIST: list[str] = field(default_factory=list)
-    PAUSE_LIST: list[str] = field(default_factory=list)
-    LOADING_LIST: list[str] = field(default_factory=list)
-    NWELIV_LIST: list[str] = field(default_factory=list)
-    BASED_LIST: list[str] = field(default_factory=list)
-    NEUROJAM_LIST: list[str] = field(default_factory=list)
-    EVILJAM_LIST: list[str] = field(default_factory=list)
-    OK_LIST: list[str] = field(default_factory=list)
-    WAVE_LIST: list[str] = field(default_factory=list)
-    SWARMFM_LIST: list[str] = field(default_factory=list)
-    NEUROKARAOKE_LIST: list[str] = field(default_factory=list)
-    DINKDONK_LIST: list[str] = field(default_factory=list)
+class EmotesMetaClass(type):
+    @property
+    def DINKDONK(cls) -> str:
+        return cls._pick(cls.DINKDONK_LIST)
+
+    @property
+    def SILLY(cls) -> str:
+        return cls._pick(cls.SILLY_LIST)
+
+    @property
+    def SWARMFM(cls) -> str:
+        return cls._pick(cls.SWARMFM_LIST)
+
+    @property
+    def NEUROKARAOKE(cls) -> str:
+        return cls._pick(cls.NEUROKARAOKE_LIST)
+
+    @property
+    def SAD(cls) -> str:
+        return cls._pick(cls.SAD_LIST)
+
+    @property
+    def SIDE_EYE(cls) -> str:
+        return cls._pick(cls.SIDE_EYE_LIST)
+
+    @property
+    def STARE(cls) -> str:
+        return cls._pick(cls.STARE_LIST)
+
+    @property
+    def HAPPY(cls) -> str:
+        return cls._pick(cls.HAPPY_LIST)
+
+    @property
+    def PAUSE(cls) -> str:
+        return cls._pick(cls.PAUSE_LIST)
+
+    @property
+    def LOADING(cls) -> str:
+        return cls._pick(cls.LOADING_LIST)
+
+    @property
+    def NWELIV(cls) -> str:
+        return cls._pick(cls.NWELIV_LIST)
+
+    @property
+    def BASED(cls) -> str:
+        return cls._pick(cls.BASED_LIST)
+
+    @property
+    def NEUROJAM(cls) -> str:
+        return cls._pick(cls.NEUROJAM_LIST)
+
+    @property
+    def EVILJAM(cls) -> str:
+        return cls._pick(cls.EVILJAM_LIST)
+
+    @property
+    def OK(cls) -> str:
+        return cls._pick(cls.OK_LIST)
+
+    @property
+    def WAVE(cls) -> str:
+        return cls._pick(cls.WAVE_LIST)
+
+    @property
+    def JAM(cls) -> str:
+        return cls._pick(cls.NEUROJAM_LIST + cls.EVILJAM_LIST)
+
+
+class EMOTES(metaclass=EmotesMetaClass):
+    SILLY_LIST: list[str] = []
+    SAD_LIST: list[str] = []
+    SIDE_EYE_LIST: list[str] = []
+    STARE_LIST: list[str] = []
+    HAPPY_LIST: list[str] = []
+    PAUSE_LIST: list[str] = []
+    LOADING_LIST: list[str] = []
+    NWELIV_LIST: list[str] = []
+    BASED_LIST: list[str] = []
+    NEUROJAM_LIST: list[str] = []
+    EVILJAM_LIST: list[str] = []
+    OK_LIST: list[str] = []
+    WAVE_LIST: list[str] = []
+    SWARMFM_LIST: list[str] = []
+    NEUROKARAOKE_LIST: list[str] = []
+    DINKDONK_LIST: list[str] = []
     _filename = "data/emotes.json"
 
-    @property
-    def DINKDONK(self) -> str:
-        return self._pick(self.DINKDONK_LIST)
-
-    @property
-    def SILLY(self) -> str:
-        return self._pick(self.SILLY_LIST)
-
-    @property
-    def SWARMFM(self) -> str:
-        return self._pick(self.SWARMFM_LIST)
-
-    @property
-    def NEUROKARAOKE(self) -> str:
-        return self._pick(self.NEUROKARAOKE_LIST)
-
-    @property
-    def SAD(self) -> str:
-        return self._pick(self.SAD_LIST)
-
-    @property
-    def SIDE_EYE(self) -> str:
-        return self._pick(self.SIDE_EYE_LIST)
-
-    @property
-    def STARE(self) -> str:
-        return self._pick(self.STARE_LIST)
-
-    @property
-    def HAPPY(self) -> str:
-        return self._pick(self.HAPPY_LIST)
-
-    @property
-    def PAUSE(self) -> str:
-        return self._pick(self.PAUSE_LIST)
-
-    @property
-    def LOADING(self) -> str:
-        return self._pick(self.LOADING_LIST)
-
-    @property
-    def NWELIV(self) -> str:
-        return self._pick(self.NWELIV_LIST)
-
-    @property
-    def BASED(self) -> str:
-        return self._pick(self.BASED_LIST)
-
-    @property
-    def NEUROJAM(self) -> str:
-        return self._pick(self.NEUROJAM_LIST)
-
-    @property
-    def EVILJAM(self) -> str:
-        return self._pick(self.EVILJAM_LIST)
-
-    @property
-    def OK(self) -> str:
-        return self._pick(self.OK_LIST)
-
-    @property
-    def WAVE(self) -> str:
-        return self._pick(self.WAVE_LIST)
-
-    @property
-    def JAM(self) -> str:
-        return self._pick(self.NEUROJAM_LIST + self.EVILJAM_LIST)
-
-    def groups(self) -> list[str]:
+    @staticmethod
+    def groups() -> list[str]:
         """Return all group names, including specials like JAM"""
-        return [name for name, value in type(self).__dict__.items() if isinstance(value, property)]
+        return [
+            name for name, value in EmotesMetaClass.__dict__.items() if isinstance(value, property)
+        ]
 
-    def _pick(self, source: list[str]) -> str:
+    @staticmethod
+    def _pick(source: list[str]) -> str:
         return random.choice(source) if source else ""
 
-    def has(self, group_name: str) -> bool:
+    @classmethod
+    def has(cls, group_name: str) -> bool:
         """Checks if a group exists (excludes JAM)."""
         attr_name = f"{group_name.upper()}_LIST"
-        return hasattr(self, attr_name)
+        return hasattr(cls, attr_name)
 
-    def get_list(self, group_name: str) -> list[str]:
+    @classmethod
+    def get_list(cls, group_name: str) -> list[str]:
         """Returns the emote list for a group"""
         group_name = group_name.upper()
         if group_name == "JAM":
-            return self.NEUROJAM_LIST + self.EVILJAM_LIST
-        target = getattr(self, f"{group_name}_LIST", None)
+            return cls.NEUROJAM_LIST + cls.EVILJAM_LIST
+        target = getattr(cls, f"{group_name}_LIST", None)
         if isinstance(target, list):
             return target
         return []
 
-    def add_emote(self, group_name: str, emote: str):
+    @classmethod
+    def add_emote(cls, group_name: str, emote: str):
         """Adds an emote using a string name (e.g. 'SILLY')."""
-        target = getattr(self, f"{group_name.upper()}_LIST", None)
+        target = getattr(cls, f"{group_name.upper()}_LIST", None)
         if isinstance(target, list):
             if emote not in target:
                 target.append(emote)
@@ -176,22 +184,23 @@ class _EmoteCollection:
             raise ValueError(f"Group '{group_name}' is invalid or read-only.")
 
     @classmethod
-    def _load(cls):
+    def load(cls):
         try:
             with open(cls._filename, "r") as f:
                 raw = json.load(f).get("EMOTES", {})
                 mapped = {f"{k}_LIST": v for k, v in raw.items()}
-                return cls(**mapped)
+                for key, value in mapped.items():
+                    setattr(cls, key, value)
         except Exception as e:
             print(e)
-            return cls()
 
-    def save(self):
+    @classmethod
+    def save(cls):
         """Dumps the emotes to json file"""
-        raw_dict = asdict(self)
-        clean_dict = {k.replace("_LIST", ""): v for k, v in raw_dict.items()}
-        with open(self._filename, "w") as f:
-            json.dump({"EMOTES": clean_dict}, f, indent=4)
+        data_to_save = {}
+        for key, value in cls.__dict__.items():
+            if isinstance(value, list) and not key.startswith("__"):
+                data_to_save[key.replace("_LIST", "")] = value
 
-
-EMOTES: _EmoteCollection = _EmoteCollection._load()
+        with open(cls._filename, "w", encoding="utf-8") as f:
+            json.dump(data_to_save, f, indent=4)

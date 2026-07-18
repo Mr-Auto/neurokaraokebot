@@ -179,6 +179,8 @@ class OwnerCog(commands.Cog):
                 message += emote_str
             if message:
                 await ctx.reply(message)
+            else:
+                await ctx.reply(f"No emotes in the group `{group_name}`")
 
     @commands.command(hidden=True)
     @commands.is_owner()

@@ -163,6 +163,7 @@ class MyBot(commands.Bot):
 os.makedirs("logs", exist_ok=True)
 os.makedirs("data", exist_ok=True)
 stats.load()
+EMOTES.load()
 handler = MyTimedRotatingFileHandler("logs/current.log", "midnight", 1, 30, "utf-8")
 bot = MyBot()
 print("Starting up")
