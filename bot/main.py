@@ -1,5 +1,4 @@
 import asyncio
-from dataclasses import dataclass
 import logging
 import os
 import aiohttp
@@ -146,6 +145,8 @@ class MyBot(commands.Bot):
             except web.HTTPServerError as e:
                 if i > 0:
                     return CustomResponse(None, e.status, f"Server Error({e.status})", url)
+            except aiohttp.ClientResponseError as e:
+                return CustomResponse(None, e.status, f"Response Error({e.message})", url)
             except web.HTTPClientError as e:
                 if i > 0 or e.status not in (408, 409, 421, 424, 429):
                     return CustomResponse(None, e.status, f"HTTP Error({e.status})", url)

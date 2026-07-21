@@ -8,7 +8,7 @@ from discord import app_commands, ui, utils
 
 import stats
 import player
-from config import SONG_API
+from config import API
 from utils import CustomResponse, EMOTES
 
 log = logging.getLogger()
@@ -153,15 +153,15 @@ class StatsCog(commands.GroupCog, group_name="stats"):
         embeds = [stats_embed]
         discord_file = utils.MISSING
         if top_song and not global_stats:
-            response: CustomResponse = await interact.client.fetch_json_data(SONG_API + top_song[0])
-            if response.error or response.status != 200 or not isinstance(response.json_data, dict):
+            resp: CustomResponse = await interact.client.fetch_json_data(f"{API.SONGS}/{top_song[0]}")
+            if resp.error or resp.status != 200 or not isinstance(resp.json_data, dict):
                 embeds.append(
                     discord.Embed(
                         description=f"Could not get data for the most requested song {EMOTES.SAD}"
                     )
                 )
             else:
-                song = player.Song(response.json_data)
+                song = player.Song(resp.json_data)
                 song_embed, discord_file = await music_cog.get_song_embed(
                     interact.guild_id, song, None, f"Most requested song ({top_song[1]} times)"
                 )
@@ -266,7 +266,7 @@ class StatsCog(commands.GroupCog, group_name="stats"):
         top_comparison: str = None,
     ):
         reply = interact.followup.send
-        tasks = [interact.client.fetch_json_data(SONG_API + song_id) for song_id, _ in top_list]
+        tasks = [interact.client.fetch_json_data(f"{API.SONGS}/{song_id}") for song_id, _ in top_list]
         api_results: list[CustomResponse] = await asyncio.gather(*tasks)
         for result in api_results:
             if result.error is not None:

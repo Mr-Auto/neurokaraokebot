@@ -14,7 +14,7 @@ from discord import app_commands, ui, utils
 
 import player
 import stats
-from config import RANDOM_API, STORAGE_URL
+from config import API, STORAGE
 from utils import CustomResponse, verify_message, EMOTES
 
 log = logging.getLogger()
@@ -217,7 +217,7 @@ class GuessSongCog(commands.Cog, group_name="guesssong"):
             return
         await interact.response.defer(thinking=True)
         reply = interact.followup.send
-        response: CustomResponse = await interact.client.fetch_json_data(RANDOM_API)
+        response: CustomResponse = await interact.client.fetch_json_data(API.RANDOM)
         if response.error:
             await reply(
                 f"Could not get data from neurokaraoke.com {EMOTES.SAD}\n(`{response.error}`)",
@@ -267,7 +267,7 @@ class GuessSongCog(commands.Cog, group_name="guesssong"):
         songs_list = dict(list_to_shuffle)
         session: aiohttp.ClientSession = interact.client.session
         try:
-            audio_url = STORAGE_URL + opus_path.strip("/")
+            audio_url = STORAGE.STORAGE + opus_path.strip("/")
             async with session.get(audio_url) as resp:
                 resp.raise_for_status()
                 song_data = await resp.read()

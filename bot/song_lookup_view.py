@@ -8,7 +8,7 @@ from datetime import datetime
 from utils import CustomResponse, EMOTES
 import stats
 from player import MusicPlayer, Song
-from config import PLAYLIST_URL, PLAYLIST_API, IMAGES_URL
+from config import PLAYLIST_URL, API, STORAGE
 
 log = logging.getLogger()
 
@@ -21,7 +21,7 @@ def get_song_cover_art(song) -> str | None:
     absolutePath = coverArt.get("absolutePath")
     if not absolutePath:
         return None
-    return IMAGES_URL + absolutePath + "/quality=90"
+    return STORAGE.IMAGES + absolutePath.strip("/") + "/quality=90"
 
 
 class RequestButton(ui.Button):
@@ -223,7 +223,7 @@ class SetlistButton(ui.Button):
 
     async def callback(self, interact: discord.Interaction):
         response: CustomResponse = await interact.client.fetch_json_data(
-            PLAYLIST_API + self.data["id"], headers={"x-guest-id": "69"}
+            API.PLAYLIST + self.data["id"], headers={"x-guest-id": "69"}
         )
         if response.error:
             await interact.response.send_message(

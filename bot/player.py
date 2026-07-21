@@ -85,10 +85,10 @@ class Song:
     def download(self, session: requests.Session | None):
         opus = self.song_info.get("opus")
         if opus:
-            opus_url = AUDIO_URL + self.song_info["opus"].strip("/")
+            opus_url = STORAGE.AUDIO + self.song_info["opus"].strip("/")
         else:
             log.warning(f"Song: '{self.get_id()}' is missing opus!")
-        song_url = AUDIO_URL + self.song_info["absolutePath"].strip("/")
+        song_url = STORAGE.AUDIO + self.song_info["absolutePath"].strip("/")
 
         try:
             if opus:
@@ -138,7 +138,7 @@ class Song:
         absolutePath = coverArt.get("absolutePath")
         if not absolutePath:
             return None
-        image_url = IMAGES_URL + absolutePath
+        image_url = STORAGE.IMAGES + absolutePath.strip("/")
         if download_animated and coverArt.get("isAnimated", False):
             try:
                 async with session.get(image_url + "/quality=80") as resp:
@@ -321,7 +321,7 @@ class Radio21(Radio):
             }
             song_info = fake_song_info
         else:
-            song_info = fetch_json_data(SONG_API + songId, g_session)
+            song_info = fetch_json_data(f"{API.SONGS}/{songId}", g_session)
         if not song_info:
             return None
         else:
@@ -515,7 +515,7 @@ class MusicPlayer:
             log.exception(f"refill_queue: error during song download:")
 
         if len(self.cache) < MAX_CACHE + 1:
-            response = self.refill_session.get(RANDOM_API, timeout=8)
+            response = self.refill_session.get(API.RANDOM, timeout=8)
             if response.status_code != 200:
                 log.error(f"refill_queue: Random API returned {response.status_code}")
                 return

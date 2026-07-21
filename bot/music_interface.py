@@ -14,7 +14,7 @@ from itertools import chain, islice
 import player
 import stats
 from config import *
-from utils import EMOTES
+from utils import EMOTES, CustomResponse
 from song_lookup_view import SongLookupView, RequestButton, SetlistsView
 
 log = logging.getLogger()
@@ -435,7 +435,7 @@ class MusicCog(commands.Cog):
         post_data = song_search(
             search=search_string, page=1, pageSize=1, sortBy="KaraokeDate", sortDesc=True
         )
-        response = await self.bot.fetch_json_data(SEARCH_API, post=post_data)
+        response: CustomResponse = await self.bot.fetch_json_data(API.SONGS, post=post_data)
         if response.error:
             await ctx.reply(f"Got {response.error} {EMOTES.SILLY}")
             return
@@ -481,7 +481,7 @@ class MusicCog(commands.Cog):
         """Random song from neurokaraoke.com"""
         await interact.response.defer()
         repl = interact.followup.send
-        response = await self.bot.fetch_json_data(RANDOM_API)
+        response: CustomResponse = await self.bot.fetch_json_data(API.RANDOM)
         if response.error:
             await repl(f"Got {response.error} {EMOTES.SILLY}", ephemeral=True)
             return
@@ -546,7 +546,7 @@ class MusicCog(commands.Cog):
         post_data = song_search(
             search=search_string, page=1, pageSize=60, sortBy="KaraokeDate", sortDesc=True
         )
-        response = await self.bot.fetch_json_data(SEARCH_API, post=post_data)
+        response: CustomResponse = await self.bot.fetch_json_data(API.SONGS, post=post_data)
         if response.error:
             await ctx.reply(f"Got {response.error} {EMOTES.SILLY}")
             return
@@ -585,8 +585,8 @@ class MusicCog(commands.Cog):
                 return
         artist_playlist = "/artist/" in url
         if not artist_playlist:
-            response = await self.bot.fetch_json_data(
-                PLAYLIST_API + playlist_id, headers={"x-guest-id": "67"}
+            response: CustomResponse = await self.bot.fetch_json_data(
+                API.PLAYLIST + playlist_id, headers={"x-guest-id": "67"}
             )
             if response.error:
                 await ctx.reply(f"Got {response.error} {EMOTES.SILLY}")
@@ -601,7 +601,7 @@ class MusicCog(commands.Cog):
             else:
                 json_result = response.json_data
         if artist_playlist:
-            response = await self.bot.fetch_json_data(ARTIST_API + playlist_id)
+            response: CustomResponse = await self.bot.fetch_json_data(API.ARTIST + playlist_id)
             if response.error:
                 await ctx.reply(f"Got {response.error} {EMOTES.SILLY}")
                 return
@@ -623,7 +623,7 @@ class MusicCog(commands.Cog):
     @cmd_verify()
     async def setlist(self, ctx: commands.Context):
         """Show all avaible karaoke setlists, allows opening them and songs request"""
-        response = await self.bot.fetch_json_data(SETLISTS_API)
+        response: CustomResponse = await self.bot.fetch_json_data(API.SETLISTS)
         if response.error:
             await ctx.reply(f"Got {response.error} {EMOTES.SILLY}")
             return
@@ -732,7 +732,7 @@ class MusicCog(commands.Cog):
             self.error_time[channel.guild.id] = time.time()
             vc.stop()
         start_wait = time.perf_counter()
-        response = await self.bot.fetch_json_data(RANDOM_API)
+        response: CustomResponse = await self.bot.fetch_json_data(API.RANDOM)
         if response.error:
             raise TypeError(
                 f"MusicPlayer: Unable to fetch random queue from api.neurokaraoke.com, {response.error}"

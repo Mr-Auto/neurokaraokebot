@@ -10,19 +10,32 @@ PAUSE_DURATION = 3
 # Bitrate for the opus encoder (when applicable)
 OPUS_BITRATE = 128
 
-# API stuff, no need to edit
-RANDOM_API = "https://api.neurokaraoke.com/api/songs/random"
-AUDIO_URL = "https://audio.neurokaraoke.com/"
-STORAGE_URL = "https://storage.neurokaraoke.com/"
+
+# Url's for linking to the website
 SONG_URL = "https://twinskaraoke.com/song/"
-SONG_API = "https://api.neurokaraoke.com/api/songs/"
-SEARCH_API = "https://api.neurokaraoke.com/api/songs"
-IMAGES_URL = "https://images.neurokaraoke.com"
-COVER_ARTITS = "https://api.neurokaraoke.com/api/filters/cover-artists?page=0&pageSize=50"
-PLAYLIST_API = "https://api.neurokaraoke.com/api/playlist/"
-ARTIST_API = "https://api.neurokaraoke.com/api/artist/"
-SETLISTS_API = "https://api.neurokaraoke.com/api/playlists?startIndex=0&pageSize=1000&search=&sortBy=&sortDescending=False&isSetlist=True&year=0"
 PLAYLIST_URL = "https://twinskaraoke.com/playlist/"
+
+
+class API(StrEnum):
+    _API = "https://api.neurokaraoke.com/api"
+    SONGS = _API + "/songs"
+    RANDOM = SONGS + "/random"
+    PLAYLIST = _API + "/playlist/"
+    ARTIST = _API + "/artist/"
+    GENRES = _API + "/genres/"
+    MOODS = _API + "/moods/"
+    THEMES = _API + "/themes/"
+    SETLISTS = (
+        _API
+        + "/playlists?startIndex=0&pageSize=1000&search=&sortBy=&sortDescending=False&isSetlist=True&year=0"
+    )
+    COVER_ARTITS = _API + "/filters/cover-artists"
+
+
+class STORAGE(StrEnum):
+    STORAGE = "https://storage.neurokaraoke.com/"
+    AUDIO = "https://audio.neurokaraoke.com/"
+    IMAGES = "https://images.neurokaraoke.com/"
 
 
 class RADIO21(StrEnum):
