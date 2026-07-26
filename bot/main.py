@@ -5,8 +5,7 @@ import aiohttp
 from aiohttp import web
 from dotenv import load_dotenv
 import discord
-from discord import Intents, Interaction, InteractionType
-from discord import app_commands
+from discord import Intents, Interaction, InteractionType, app_commands
 from discord.ext import commands
 
 import stats

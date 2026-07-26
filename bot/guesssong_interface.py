@@ -134,7 +134,7 @@ class GuessSongCog(commands.Cog, group_name="guesssong"):
             view.add_item(button)
         try:
             ins = inspect.signature(method)
-            msg = f"Guess this song using `/guesssong answer [name]`\nTimeout <t:{int(time.time()+self.TIMEOUTS[game.state])}:R>"
+            msg = f"Guess this song using `/guesssong [name]`\nTimeout <t:{int(time.time()+self.TIMEOUTS[game.state])}:R>"
             if "wait" in ins.parameters:
                 return await method(msg, file=discord_file, view=view, wait=True)
             else:  # edit
