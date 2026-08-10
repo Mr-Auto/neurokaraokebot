@@ -70,13 +70,8 @@ class OwnerCog(commands.Cog):
             self.setlist_data["last_setlist"] = recent_id
             self.setlist_data["temporary"] = is_temporary
             for guild_id, data in list(self.setlist_data["notify"].items()):
-                if isinstance(data, str):
-                    self.setlist_data["notify"][guild_id] = {"channel": data}
-                    channel_id = data
-                    role = None
-                else:
-                    channel_id = data.get("channel")
-                    role = data.get("role")
+                channel_id = data.get("channel")
+                role = data.get("role")
                 if role is None:
                     notif_text = f"{EMOTES.DINKDONK} {notif_temp}"
                 else:
@@ -379,7 +374,9 @@ class OwnerCog(commands.Cog):
                     if previous_role is None:
                         role_str = "unknown role"
                     else:
-                        role_name = previous_role.name.replace("`", "").replace("\r", "").replace("\n", " ")
+                        role_name = (
+                            previous_role.name.replace("`", "").replace("\r", "").replace("\n", " ")
+                        )
                         role_str = f"`{role_name}` role"
                 if previous_channel_id:
                     channel_info = (
