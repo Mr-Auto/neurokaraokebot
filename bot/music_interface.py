@@ -54,9 +54,7 @@ def cmd_verify():
         vc = ctx.voice_client
         mp = ctx.bot.get_cog("MusicCog").get_music_player(ctx)
         if not vc or not mp:
-            raise NotAllowedError(
-                "Bot not running, use /joinvc to invite it to VC. Command allowed only in VC"
-            )
+            raise NotAllowedError("Bot not running, use /joinvc to invite it to VC")
         if (
             ctx.channel.id != vc.channel.id
             or not ctx.author.voice
@@ -98,12 +96,15 @@ class MusicCog(commands.Cog):
     @app_commands.checks.cooldown(1, 12, key=lambda i: i.guild_id)
     async def joinvc(self, interact: discord.Interaction):
         """Invite bot to VC"""
-        await interact.response.defer()
-        repl = interact.followup.send
+        repl = interact.response.send_message
         if interact.guild.voice_client:
             await repl(f"Bot already in VC {EMOTES.SILLY}", ephemeral=True)
             return
-        if interact.channel.type != discord.ChannelType.voice:
+        voice = interact.user.voice
+        if voice is None or voice.channel is None:
+            await repl(f"You have to be in a VC {EMOTES.SILLY}", ephemeral=True)
+            return
+        if voice.channel.type != discord.ChannelType.voice:
             await repl(
                 f"Can't play audio in '{interact.channel.type}' channel! {EMOTES.SAD}",
                 ephemeral=True,
@@ -116,10 +117,15 @@ class MusicCog(commands.Cog):
                 f"There has been an error {EMOTES.SAD}, try again in {diff:.1f}s", ephemeral=True
             )
             return
-        channel = interact.channel
+        channel = voice.channel
+        await interact.response.defer()
+        repl = interact.followup.send
         try:
             await channel.connect(reconnect=False, timeout=10)
-            await repl(f"Starting Neuro Karaoke Playback in '{channel}' {EMOTES.HAPPY}")
+            try:
+                await repl(f"Starting Neuro Karaoke Playback in {channel.mention} {EMOTES.HAPPY}")
+            except Exception:
+                pass
             await self.start(channel)
         except TimeoutError:
             await repl(
@@ -133,13 +139,13 @@ class MusicCog(commands.Cog):
         vc = ctx.voice_client
         mp = self.get_music_player(ctx)
         mp.pause()
-        stats.update(ctx.guild.id, mp.current_song, self.get_members_listening(ctx.channel))
+        stats.update(ctx.guild.id, mp.current_song, self.get_members_listening(vc.channel))
         if vc.is_playing():
             vc.pause()
             await ctx.reply(f"Paused ⏸️ {EMOTES.PAUSE}")
             if mp.update_status:
                 await self.set_voice_status(vc.channel, mp.current_song.song_name(), True)
-        await ctx.guild.change_voice_state(channel=ctx.channel, self_mute=True)
+        await ctx.guild.change_voice_state(channel=vc.channel, self_mute=True)
 
     @commands.command(priority=2, aliases=("▶️",))
     @cmd_verify()
@@ -153,23 +159,21 @@ class MusicCog(commands.Cog):
             await ctx.reply(f"Resumed ▶️ {EMOTES.JAM}")
             if mp.update_status:
                 await self.set_voice_status(vc.channel, mp.current_song.song_name(), False)
-        await ctx.guild.change_voice_state(channel=ctx.channel, self_mute=False)
+        await ctx.guild.change_voice_state(channel=vc.channel, self_mute=False)
 
     @commands.command()
     @commands.cooldown(1, 10, commands.BucketType.guild)
     async def reconnect(self, ctx: commands.Context):
         """Reset the bot and reconnect to this VC (kills the queue)"""
-        if not ctx.voice_client and not ctx.me.voice:
-            await ctx.reply(
-                "Bot not running, use /joinvc to invite it to VC. Command allowed only in VC",
-                delete_after=5,
-            )
+        if ctx.voice_client is None and (ctx.me.voice is None or ctx.me.voice.channel is None):
+            await ctx.reply("Bot not running, use /joinvc to invite it to VC", delete_after=10)
             return
-        if ctx.voice_client:
-            channel = ctx.voice_client.channel
-        else:
-            channel = ctx.me.voice.channel
-        if ctx.channel.id != channel.id:
+        channel = ctx.voice_client.channel if ctx.voice_client else ctx.me.voice.channel
+        if (
+            ctx.author.voice is None
+            or ctx.author.voice.channel is None
+            or ctx.author.voice.channel.id != channel.id
+        ):
             await ctx.reply("You can only use this command in VC with the bot", delete_after=10)
             return
         mp = self.get_music_player(ctx)
@@ -186,7 +190,7 @@ class MusicCog(commands.Cog):
             await ctx.guild.change_voice_state(channel=None)
         await asyncio.sleep(3)
         await channel.connect(reconnect=False)
-        await self.start(ctx.channel)
+        await self.start(channel)
 
     @commands.command(priority=8)
     @cmd_verify()
@@ -534,7 +538,8 @@ class MusicCog(commands.Cog):
         if mp.update_status != update:
             if update:
                 await ctx.reply(f"Status updates back ON {EMOTES.OK}")
-                await self.set_voice_status(ctx.channel, mp.current_song.song_name(), mp.is_paused())
+                channel = ctx.voice_client.channel
+                await self.set_voice_status(channel, mp.current_song.song_name(), mp.is_paused())
             else:
                 await ctx.reply(f"Status updates OFF {EMOTES.NWELIV}")
         mp.update_status = update
@@ -753,14 +758,20 @@ class MusicCog(commands.Cog):
         remaining = max(0, 3 - (time.perf_counter() - start_wait))
         await asyncio.sleep(remaining)
         await self.play_current(vc)
-        await channel.send(f"Now playing `{song_name}` {EMOTES.JAM}")
+        try:
+            await channel.send(f"Now playing `{song_name}` {EMOTES.JAM}")
+        except Exception:
+            pass
         log.info(f"start: Starting karaoke in: ({channel.guild.name} / {channel.name})")
         new_mp.refill()
 
     async def play_current(self, vc: discord.VoiceClient, start_paused=False):
         mp = self.get_music_player(vc)
         if not mp.current_song.has_playback():
-            await vc.channel.send(EMOTES.LOADING)
+            try:
+                await vc.channel.send(EMOTES.LOADING)
+            except Exception:
+                pass
             if mp.refill_task is not None:
                 await mp.refill_task
             if not mp.current_song.has_playback():
@@ -996,7 +1007,7 @@ class MusicCog(commands.Cog):
                 mp.pause()
                 log.warning("Detected active playback, attempting to resume")
                 await asyncio.sleep(1)
-                if member.guild.voice_client or member.voice:
+                if member.guild.voice_client or (member.voice and member.voice.channel):
                     log.warning("Already connected to voice?")
                 vc = await before.channel.connect(reconnect=False)
                 # We use play_current so it will continue playing the song
@@ -1082,7 +1093,10 @@ class MusicCog(commands.Cog):
                     if mp.update_status:
                         await self.set_voice_status(vc.channel, mp.current_song.song_name(), True)
                     await guild.change_voice_state(channel=vc.channel, self_mute=True)
-                    await vc.channel.send(f"No one's listening {EMOTES.SAD}\nPaused ⏸️")
+                    try:
+                        await vc.channel.send(f"No one's listening {EMOTES.SAD}\nPaused ⏸️")
+                    except Exception:
+                        pass
 
     @check_alone_status.before_loop
     async def before_loop(self):

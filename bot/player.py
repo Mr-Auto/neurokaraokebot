@@ -64,20 +64,14 @@ class Song:
         return self.song_info.get("id")
 
     def get_url(self) -> str | None:
-        if self.get_id():
-            return SONG_URL + self.get_id()
+        if song_id := self.get_id():
+            return SONG_URL + song_id
         else:
             return None
 
     @property
     def duration(self) -> float | None:
-        if self.has_playback():
-            try:
-                return self.playback.duration()
-            except:
-                pass
-
-        return self.song_info.get("duration")
+        return self.playback.duration() if self.has_playback() else self.song_info.get("duration")
 
     def remaining(self) -> float | None:
         return self.playback.remaining() if self.has_playback() else None
@@ -85,7 +79,7 @@ class Song:
     def download(self, session: requests.Session | None):
         opus = self.song_info.get("opus")
         if opus:
-            opus_url = STORAGE.AUDIO + self.song_info["opus"].strip("/")
+            opus_url = STORAGE.AUDIO + opus.strip("/")
         else:
             log.warning(f"Song: '{self.get_id()}' is missing opus!")
         song_url = STORAGE.AUDIO + self.song_info["absolutePath"].strip("/")
@@ -147,7 +141,7 @@ class Song:
                         with io.BytesIO(data) as image_binary:
                             content_type = resp.headers.get("Content-Type", "image/gif")
                             extension = content_type.split("/")[-1]
-                            filename = f"attachment.{extension}"
+                            filename = f"cover_art.{extension}"
                             discord_file = discord.File(
                                 image_binary, filename, description="Cover Art"
                             )
@@ -252,7 +246,7 @@ class Radio(Song):
         return ""
 
     def download(self, session: requests.Session | None):
-        return
+        pass
 
     def song_name(self) -> str:
         return ""
@@ -292,11 +286,8 @@ class Radio21(Radio):
 
     def get_data(self, force=False) -> dict | None:
         data_age = time.time() - self.fetched_at + 5
-        if (
-            force
-            or not self.data
-            or self.data.get(self.CURRENT, {}).get("remaining", -999) < data_age
-        ):
+        remaining = self.data.get(self.CURRENT, {}).get("remaining", -999)
+        if force or not self.data or remaining < data_age:
             self.data = fetch_json_data(RADIO21.SONGDATA, g_session)
             self.fetched_at = time.time()
         return self.data
