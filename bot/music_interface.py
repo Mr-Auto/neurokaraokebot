@@ -56,11 +56,12 @@ def cmd_verify():
         if not vc or not mp:
             raise NotAllowedError("Bot not running, use /joinvc to invite it to VC")
         if (
-            ctx.channel.id != vc.channel.id
-            or not ctx.author.voice
+            # ctx.channel.id != vc.channel.id
+            ctx.author.voice is None
+            or ctx.author.voice.channel is None
             or ctx.author.voice.channel.id != vc.channel.id
         ):
-            raise NotAllowedError("You can only use this command in VC with the bot")
+            raise NotAllowedError("You can only use this command while being in the VC with the bot")
         return True
 
     return commands.check(predicate)
