@@ -40,7 +40,7 @@ class STORAGE(StrEnum):
 
 class RADIO21(StrEnum):
     URL = "https://radio.twinskaraoke.com/public/neuro_21"
-    LOGO = "https://files.catbox.moe/e5bshj.gif"
+    LOGO = "https://x02.me/u/DRAH.gif"
     SONGDATA = "https://radio.twinskaraoke.com/api/nowplaying/neuro_21"
 
 
@@ -48,10 +48,10 @@ class SWARMFM(StrEnum):
     URL = "https://player.sw.arm.fm"
     STREAM = "https://cast.sw.arm.fm/stream"
     SONGDATA = "https://swarm-fm.boopdev.com/v2/player"
-    LOGO = "https://files.catbox.moe/4t19wk.png"
-    COVER_ART_TWINS = "https://files.catbox.moe/6osfxs.gif"
-    COVER_ART_NEURO = "https://files.catbox.moe/5i1xrb.gif"
-    COVER_ART_EVIL = "https://files.catbox.moe/2h9bah.gif"
+    LOGO = "https://x02.me/u/P9WU3A.png"
+    COVER_ART_TWINS = "https://x02.me/u/S4ZRZ.gif"
+    COVER_ART_NEURO = "https://x02.me/u/XUWK4K.gif"
+    COVER_ART_EVIL = "https://x02.me/u/9BMKG.gif"
 
 
 # Embed colors
