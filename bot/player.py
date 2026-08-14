@@ -330,7 +330,6 @@ class Radio21(Radio):
                 data = fetch_json_data(RADIO21.SONGDATA, s)
         else:
             data = fetch_json_data(RADIO21.SONGDATA, session)
-        log.error(f"after download {data}")
         if data:
             mounts = data.get("station", {}).get("mounts", [])
             for mount in mounts:
