@@ -262,6 +262,7 @@ class Radio21(Radio):
         self.requested_by = requested_by
         self.CURRENT = "now_playing"
         self.NEXT = "playing_next"
+        self.data = {}
         self.get_data(True)
 
     @staticmethod
