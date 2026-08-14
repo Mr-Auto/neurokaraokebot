@@ -1,3 +1,4 @@
+import re
 import weakref
 import discord
 from discord.ext import commands, tasks
@@ -437,22 +438,42 @@ class MusicCog(commands.Cog):
         """Song request"""
         if isinstance(search_string, discord.PartialEmoji):
             search_string = search_string.name
-        post_data = song_search(
-            search=search_string, page=1, pageSize=1, sortBy="KaraokeDate", sortDesc=True
-        )
-        response: CustomResponse = await self.bot.fetch_json_data(API.SONGS, post=post_data)
-        if response.error:
-            await ctx.reply(f"Got {response.error} {EMOTES.SILLY}")
-            return
-        if response.status != 200:
-            await ctx.reply(f"Something went wrong, status code: `{response.status}` {EMOTES.SILLY}")
-            return
-        if not response.json_data or "items" not in response.json_data:
-            log.warning(f"term: '{search_string}' resulted in empty response")
-            await ctx.reply(f"Got empty request back {EMOTES.SAD}")
-            return
+        search_string = search_string.strip(" <>/")
+        song_id = search_string.rsplit("/", 1)[-1]
+        if re.match(r"^[0-9a-z]{8}-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{12}$", song_id):
+            response: CustomResponse = await self.bot.fetch_json_data(f"{API.SONGS}/{song_id}")
+            if response.error:
+                await ctx.reply(f"Got {response.error} {EMOTES.SILLY}")
+                return
+            if response.status != 200:
+                await ctx.reply(
+                    f"Something went wrong, status code: `{response.status}` {EMOTES.SILLY}"
+                )
+                return
+            if not response.json_data:
+                log.warning(f"term: '{search_string}' resulted in empty response")
+                await ctx.reply(f"Got empty request back {EMOTES.SAD}")
+                return
+            result_list = [response.json_data]
+        else:
+            post_data = song_search(
+                search=search_string, page=1, pageSize=1, sortBy="KaraokeDate", sortDesc=True
+            )
+            response: CustomResponse = await self.bot.fetch_json_data(API.SONGS, post=post_data)
+            if response.error:
+                await ctx.reply(f"Got {response.error} {EMOTES.SILLY}")
+                return
+            if response.status != 200:
+                await ctx.reply(
+                    f"Something went wrong, status code: `{response.status}` {EMOTES.SILLY}"
+                )
+                return
+            if not response.json_data or "items" not in response.json_data:
+                log.warning(f"term: '{search_string}' resulted in empty response")
+                await ctx.reply(f"Got empty request back {EMOTES.SAD}")
+                return
+            result_list = response.json_data["items"]
 
-        result_list = response.json_data["items"]
         if len(result_list) == 0:
             char_limit = 20
             if len(search_string) > char_limit:
