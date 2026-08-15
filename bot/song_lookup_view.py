@@ -223,7 +223,7 @@ class SetlistButton(ui.Button):
 
     async def callback(self, interact: discord.Interaction):
         response: CustomResponse = await interact.client.fetch_json_data(
-            API.PLAYLIST + self.data["id"], headers={"x-guest-id": "69"}
+            f"{API.PLAYLIST}/{self.data['id']}", headers={"x-guest-id": "69"}
         )
         if response.error:
             await interact.response.send_message(

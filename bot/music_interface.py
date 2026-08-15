@@ -601,7 +601,7 @@ class MusicCog(commands.Cog):
         artist_playlist = "/artist/" in url
         if not artist_playlist:
             response: CustomResponse = await self.bot.fetch_json_data(
-                API.PLAYLIST + playlist_id, headers={"x-guest-id": "67"}
+                f"{API.PLAYLIST}/{playlist_id}", headers={"x-guest-id": "67"}
             )
             if response.error:
                 await ctx.reply(f"Got {response.error} {EMOTES.SILLY}")
@@ -616,7 +616,7 @@ class MusicCog(commands.Cog):
             else:
                 json_result = response.json_data
         if artist_playlist:
-            response: CustomResponse = await self.bot.fetch_json_data(API.ARTIST + playlist_id)
+            response: CustomResponse = await self.bot.fetch_json_data(f"{API.ARTIST}/{playlist_id}")
             if response.error:
                 await ctx.reply(f"Got {response.error} {EMOTES.SILLY}")
                 return

@@ -153,7 +153,9 @@ class StatsCog(commands.GroupCog, group_name="stats"):
         embeds = [stats_embed]
         discord_file = utils.MISSING
         if top_song and not global_stats:
-            resp: CustomResponse = await interact.client.fetch_json_data(f"{API.SONGS}/{top_song[0]}")
+            resp: CustomResponse = await interact.client.fetch_json_data(
+                f"{API.SONGS}/{top_song[0]}"
+            )
             if resp.error or resp.status != 200 or not isinstance(resp.json_data, dict):
                 embeds.append(
                     discord.Embed(
@@ -266,7 +268,9 @@ class StatsCog(commands.GroupCog, group_name="stats"):
         top_comparison: str = None,
     ):
         reply = interact.followup.send
-        tasks = [interact.client.fetch_json_data(f"{API.SONGS}/{song_id}") for song_id, _ in top_list]
+        tasks = [
+            interact.client.fetch_json_data(f"{API.SONGS}/{song_id}") for song_id, _ in top_list
+        ]
         api_results: list[CustomResponse] = await asyncio.gather(*tasks)
         for result in api_results:
             if result.error is not None:
