@@ -68,18 +68,6 @@ def cmd_verify():
     return commands.check(predicate)
 
 
-def song_search(**kwargs) -> dict:
-    """
-    sort by available:
-    Title PlayCount KaraokeDate Duration
-
-    all available keys and example data:
-    {"search":"text","page": 1,"pageSize": 10,"sortBy":"KaraokeDate","sortDesc": True,"sortDesc":false,"genreIds":null,"themeIds":null,"moodIds":null,"artistIds":null,
-    "coverArtistIds":null,"languageIds":null,"energyLevel":null,"tempo":null,"key":null,"karaokeStart":null,"karaokeEnd":null}
-    """
-    return kwargs
-
-
 class MusicCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -456,7 +444,7 @@ class MusicCog(commands.Cog):
                 return
             result_list = [response.json_data]
         else:
-            post_data = song_search(
+            post_data = dict(
                 search=search_string, page=1, pageSize=1, sortBy="KaraokeDate", sortDesc=True
             )
             response: CustomResponse = await self.bot.fetch_json_data(API.SONGS, post=post_data)
@@ -570,7 +558,7 @@ class MusicCog(commands.Cog):
     async def findsong(self, ctx: commands.Context, *, search_string: str):
         """Lookup for specific song, allows request from the list if used in VC"""
         # we pull max 60 songs since the view shows up to 6 songs at once
-        post_data = song_search(
+        post_data = dict(
             search=search_string, page=1, pageSize=60, sortBy="KaraokeDate", sortDesc=True
         )
         response: CustomResponse = await self.bot.fetch_json_data(API.SONGS, post=post_data)
@@ -650,7 +638,8 @@ class MusicCog(commands.Cog):
     @cmd_verify()
     async def setlist(self, ctx: commands.Context):
         """Show all avaible karaoke setlists, allows opening them and songs request"""
-        response: CustomResponse = await self.bot.fetch_json_data(API.SETLISTS)
+        get_data = dict(startIndex=0, pageSize=1000, isSetlist="true")
+        response: CustomResponse = await self.bot.fetch_json_data(API.PLAYLISTS, get=get_data)
         if response.error:
             await ctx.reply(f"Got {response.error} {EMOTES.SILLY}")
             return

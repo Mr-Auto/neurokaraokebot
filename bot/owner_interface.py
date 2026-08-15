@@ -45,7 +45,8 @@ class OwnerCog(commands.Cog):
     @tasks.loop(minutes=30)
     async def setlist_check(self):
         stats.save()
-        response: CustomResponse = await self.bot.fetch_json_data(API.SETLISTS)
+        get_data = dict(startIndex=0, pageSize=1000, isSetlist="true")
+        response: CustomResponse = await self.bot.fetch_json_data(API.PLAYLISTS, get=get_data)
         if response.error or response.status != 200 or len(response.json_data) == 0:
             log.warning("setlist_check: could not reach setlist api")
             return

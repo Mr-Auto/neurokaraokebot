@@ -25,10 +25,7 @@ class API(StrEnum):
     GENRES = _API + "/genres/"
     MOODS = _API + "/moods/"
     THEMES = _API + "/themes/"
-    SETLISTS = (
-        _API
-        + "/playlists?startIndex=0&pageSize=1000&search=&sortBy=&sortDescending=False&isSetlist=True&year=0"
-    )
+    PLAYLISTS = _API + "/playlists"
     COVER_ARTITS = _API + "/filters/cover-artists"
 
 
