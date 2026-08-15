@@ -222,16 +222,15 @@ class SetlistButton(ui.Button):
         return True
 
     async def callback(self, interact: discord.Interaction):
+        await interact.response.defer()
         response: CustomResponse = await interact.client.fetch_json_data(
             f"{API.PLAYLIST}/{self.data['id']}", headers={"x-guest-id": "69"}
         )
         if response.error:
-            await interact.response.send_message(
-                f"Got {response.error} {EMOTES.SILLY}", ephemeral=True
-            )
+            await interact.followup.send(f"Got {response.error} {EMOTES.SILLY}", ephemeral=True)
             return
         if response.status != 200:
-            await interact.response.send_message(
+            await interact.followup.send(
                 f"Something went wrong, status code: `{response.status}` {EMOTES.SILLY}",
                 ephemeral=True,
             )
@@ -242,9 +241,7 @@ class SetlistButton(ui.Button):
             or "songListDTOs" not in json_result
             or len(json_result["songListDTOs"]) == 0
         ):
-            await interact.response.send_message(
-                f"Didn't get playlist back {EMOTES.SILLY}", ephemeral=True
-            )
+            await interact.followup.send(f"Didn't get playlist back {EMOTES.SILLY}", ephemeral=True)
             return
         plylist_data = json_result["songListDTOs"]
         if self.button_function == ButtonType.REQUEST:
@@ -252,14 +249,14 @@ class SetlistButton(ui.Button):
             the_view: SetlistsView = self.view
             the_view.request_allowed = False
             the_view.update_view()
-            await interact.response.edit_message(view=the_view)
+            await interact.edit_original_response(view=the_view)
             cog = interact.client.get_cog("MusicCog")
             mp: MusicPlayer = cog.music_players.get(interact.guild.id)
             mp.requests_cache.extend(Song(d, interact.user.name) for d in plylist_data)
             mp.refill()
-            song_nr = len(plylist_data)
+            song_count = len(plylist_data)
             await interact.channel.send(
-                f"{interact.user.mention} requested: `{song_nr} songs`\nFrom {self.data['name']}"
+                f"{interact.user.mention} requested: `{song_count} songs`\nFrom {self.data['name']}"
             )
             stats.song_requested(interact.guild_id, interact.user.id, None)
         else:
@@ -267,7 +264,7 @@ class SetlistButton(ui.Button):
                 self.view.message = None
             new_view = SongLookupView(plylist_data, True, self.owner_id, json_result.get("name"))
             new_view.message = interact.message
-            await interact.response.edit_message(view=new_view)
+            await interact.edit_original_response(view=new_view)
 
 
 class SetlistsView(SongLookupView):
