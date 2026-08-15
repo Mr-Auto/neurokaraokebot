@@ -582,7 +582,12 @@ class MusicCog(commands.Cog):
             await ctx.reply(f"No results for `{truncated}` {EMOTES.SIDE_EYE}")
             return
 
-        request_allowed = ctx.voice_client and ctx.voice_client.channel.id == ctx.channel.id
+        request_allowed = (
+            ctx.voice_client
+            and ctx.author.voice
+            and ctx.author.voice.channel
+            and ctx.voice_client.channel.id == ctx.author.voice.channel.id
+        )
         view = SongLookupView(result_list, request_allowed, ctx.author.id)
         view.message = await ctx.reply(view=view)
 
