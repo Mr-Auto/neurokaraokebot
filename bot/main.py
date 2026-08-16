@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+from datetime import datetime
 import aiohttp
 from aiohttp import web
 from dotenv import load_dotenv
@@ -166,7 +167,7 @@ stats.load()
 EMOTES.load()
 handler = MyTimedRotatingFileHandler("logs/current.log", "midnight", 1, 30, "utf-8")
 bot = MyBot()
-print("Starting up")
+print(f"Starting up {datetime.now()}")
 load_dotenv()
 bot.run(
     os.getenv("BOT_TOKEN"), log_handler=handler, log_formatter=handler.formatter, root_logger=True
