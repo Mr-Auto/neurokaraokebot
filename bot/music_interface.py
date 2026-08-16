@@ -595,33 +595,60 @@ class MusicCog(commands.Cog):
     @cmd_verify()
     async def playlist(self, ctx: commands.Context, url: str):
         """Open playlist from neurokaraoke (full url, just id or "lofi"), allowing you to request songs from it"""
-        artist_playlist = False
         if url.lower() == "lofi":
             playlist_id = "c33f0038-3abc-4343-9ab9-f597581ce279"
         else:
-            playlist_id = url.strip("<>").strip("/").rsplit("/", 1)[-1]
+            playlist_id = url.strip(" <>/").rsplit("/", 1)[-1]
             if len(playlist_id) != 36:
                 await ctx.reply(f"Invalid playlist link or id {EMOTES.SILLY}")
                 return
-        artist_playlist = "/artist/" in url
-        if not artist_playlist:
-            response: CustomResponse = await self.bot.fetch_json_data(
-                f"{API.PLAYLIST}/{playlist_id}", headers={"x-guest-id": "67"}
-            )
-            if response.error:
-                await ctx.reply(f"Got {response.error} {EMOTES.SILLY}")
-                return
-            if response.status == 204 and len(url) < 40:
-                artist_playlist = True
-            elif response.status != 200:
+        api = None
+        if "playlist/" in url:
+            api = API.PLAYLIST
+            result_key = "songListDTOs"
+        elif "artist/" in url:
+            api = API.ARTIST
+            result_key = "songListDTOs"
+        elif "genre/" in url:
+            api = API.GENRES
+            result_key = "songs"
+        elif "mood/" in url:
+            api = API.MOODS
+            result_key = "songs"
+        elif "theme/" in url:
+            api = API.THEMES
+            result_key = "songs"
+
+        if api is None:
+            songlist = None
+            tasks = [
+                self.bot.fetch_json_data(f"{a}/{playlist_id}", headers={"x-guest-id": "67"})
+                for a in (API.PLAYLIST, API.ARTIST, API.GENRES, API.MOODS, API.THEMES)
+            ]
+            results: list[CustomResponse] = await asyncio.gather(*tasks)
+            for result in results:
+                if result.error or result.status != 200 or not result.json_data:
+                    continue
+                if API.ARTIST in result.url or API.PLAYLIST in result.url:
+                    result_key = "songListDTOs"
+                else:
+                    result_key = "songs"
+                if result_key not in result.json_data or not result.json_data[result_key]:
+                    continue
+                json_result = result.json_data
+                songlist = json_result[result_key]
+                if API.PLAYLIST in result.url:
+                    api = API.PLAYLIST
+                break
+            if not songlist:
                 await ctx.reply(
-                    f"Something went wrong, status code: `{response.status}` {EMOTES.SILLY}"
+                    f"Something went wrong, could not get playlist for that {EMOTES.SAD}"
                 )
                 return
-            else:
-                json_result = response.json_data
-        if artist_playlist:
-            response: CustomResponse = await self.bot.fetch_json_data(f"{API.ARTIST}/{playlist_id}")
+        else:
+            response: CustomResponse = await self.bot.fetch_json_data(
+                f"{api}/{playlist_id}", headers={"x-guest-id": "67"}
+            )
             if response.error:
                 await ctx.reply(f"Got {response.error} {EMOTES.SILLY}")
                 return
@@ -631,12 +658,16 @@ class MusicCog(commands.Cog):
                 )
                 return
             json_result = response.json_data
-        if "songListDTOs" not in json_result or len(json_result["songListDTOs"]) == 0:
-            await ctx.reply(f"Didn't get playlist back {EMOTES.SAD}")
-            return
-        view = SongLookupView(
-            json_result["songListDTOs"], True, ctx.author.id, json_result.get("name")
-        )
+            if result_key not in json_result or len(json_result[result_key]) == 0:
+                await ctx.reply(f"Didn't get playlist back {EMOTES.SAD}")
+                return
+            songlist = json_result[result_key]
+
+        if api == API.PLAYLIST:
+            songlist.sort(key=lambda s: s.get("order", 0))
+        else:
+            songlist.sort(key=lambda s: s.get("streamDate") or 0, reverse=True)
+        view = SongLookupView(songlist, True, ctx.author.id, json_result.get("name"))
         view.message = await ctx.reply(view=view)
 
     @commands.command(aliases=("setlists",))
