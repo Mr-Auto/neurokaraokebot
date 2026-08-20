@@ -66,8 +66,9 @@ Sync generally needs to be done once per bot. You may need to run it again after
   *  **Song Requests** `!songrequest [search string]` will add first matching song to the queue, alternatively `!findsong [search string]` to display results before requesting (max 60 results)
   *  **Radio21 or SwarmFM** can be requested with `!radio` command, radio playback works like a single song, will play until skipped using `!skip`
   *  **Song title as VC status** can be disabled with `!updatestatus on/off`
-  *  **View playlist** `!playlist [url/ID/"lofi"]`, will display the playlist in the same view as `!findsong`, allowing to request songs from it
+  *  **View playlist** `!playlist [url/ID/"lofi"]`, will display the playlist in the same view as `!findsong`, allowing to request songs from it. Supports normal playlist, artist page playlist, genres/themes/moods playlist
   *  **View setlist** `!setlist`, will display form with all the available setlists, allowing you to request whole setlist or open it as playlist
+  *  **View your favorites** with `!favorites` command (from neurokaraoke, need account linked), let's you request songs from it just like any other playlist
   *  **Reset bot** `!reconnect` will make the bot reconnect and full reset for this server (clear queue etc.)
   *  **Other self explanatory** `!pause`, `!resume`, `!song`, `!nextsong`, `!skip`, `!queue`
 * **Additional**:
