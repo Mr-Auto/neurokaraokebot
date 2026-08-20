@@ -5,7 +5,7 @@ from discord import ui
 from enum import Enum, auto
 from datetime import datetime
 
-from utils import CustomResponse, EMOTES
+from utils import CustomResponse, EMOTES, author_check
 import stats
 from player import MusicPlayer, Song
 from config import PLAYLIST_URL, API, STORAGE
@@ -97,7 +97,7 @@ class SongLookupView(ui.LayoutView):
         self.current_page = 0
         self.request_allowed = request_allowed
         self.owner_id = owner_id
-        self.message = None
+        self.message: discord.Message | discord.InteractionMessage = None
         self.name = name
         self.request_messages = {}
         self.update_view()  # last
@@ -145,19 +145,10 @@ class SongLookupView(ui.LayoutView):
             self.update_view()
             await interact.response.edit_message(view=self)
 
-        async def author_check(interact: discord.Interaction) -> bool:
-            if interact.user.id != self.owner_id:
-                await interact.response.send_message(
-                    "Only the owner can use this button!", ephemeral=True
-                )
-                return False
-
-            return True
-
         prev_btn.callback = prev_callback
-        prev_btn.interaction_check = author_check
+        prev_btn.interaction_check = author_check(self.owner_id)
         next_btn.callback = next_callback
-        next_btn.interaction_check = author_check
+        next_btn.interaction_check = author_check(self.owner_id)
         action_row = ui.ActionRow()
         action_row.add_item(prev_btn)
         action_row.add_item(next_btn)

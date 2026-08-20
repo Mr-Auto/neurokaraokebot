@@ -1,3 +1,5 @@
+from functools import partial
+import os
 import re
 import weakref
 import discord
@@ -15,7 +17,7 @@ from itertools import chain, islice
 import player
 import stats
 from config import *
-from utils import EMOTES, CustomResponse
+from utils import EMOTES, CustomResponse, author_check
 from song_lookup_view import SongLookupView, RequestButton, SetlistsView
 
 log = logging.getLogger()
@@ -75,6 +77,8 @@ class MusicCog(commands.Cog):
         self.check_alone_status.start()
         self.voice_statuses = {}
         self.error_time = {}
+        if os.getenv("API_KEY") is None:
+            self.favorite.enabled = False
 
     async def cog_unload(self):
         self.check_alone_status.cancel()
@@ -717,6 +721,64 @@ class MusicCog(commands.Cog):
         await ctx.reply(
             f"Added `{radio_name}` at position {position} in the queue\nPlaying {playing_in_str}"
         )
+
+    @commands.command(aliases=("favorites", "favourites", "favourite", "fav"))
+    @cmd_verify()
+    async def favorite(self, ctx: commands.Context):
+        """Allows you to view your favorites from twinskaraoke.com, public or private, you choose (you need to have your discord account linked)"""
+        headers = {"X-Api-Key": os.getenv("API_KEY")}
+        response: CustomResponse = await self.bot.fetch_json_data(
+            f"{API.FAVORITES}/{ctx.author.id}", headers=headers
+        )
+        if response.status == 404:
+            await ctx.reply(
+                f"User not found, you sure you have the discord account linked? {EMOTES.SILLY}"
+            )
+            return
+        if response.error:
+            await ctx.reply(f"Got {response.error} {EMOTES.SILLY}")
+            return
+        if response.status != 200:
+            await ctx.reply(f"Something went wrong, status code: `{response.status}` {EMOTES.SILLY}")
+            return
+        json_result = response.json_data
+        if not json_result or len(json_result) == 0:
+            await ctx.reply(f"You don't have favorites {EMOTES.SIDE_EYE}")
+            return
+        view = discord.ui.View(timeout=60)
+        private_button = discord.ui.Button(label="Private", style=discord.ButtonStyle.green)
+        view.add_item(private_button)
+        public_button = discord.ui.Button(label="Public", style=discord.ButtonStyle.red)
+        view.add_item(public_button)
+        msg = await ctx.reply("Open your favorites playlist as:", view=view)
+
+        async def on_timeout():
+            private_button.disabled = True
+            public_button.disabled = True
+            try:
+                await msg.edit(view=view)
+            except Exception:
+                pass
+
+        async def button_press(interact: discord.Interaction, button_type: discord.ButtonStyle):
+            playlist_view = SongLookupView(
+                json_result, True, interact.user.id, f"{interact.user.mention} favorites"
+            )
+            if button_type == discord.ButtonStyle.red:
+                view.stop()
+                await interact.response.edit_message(content=None, view=playlist_view)
+                playlist_view.message = interact.message
+            else:
+                await interact.response.send_message(view=playlist_view, ephemeral=True)
+                playlist_view.message = await interact.original_response()
+                await view.on_timeout()
+                view.stop()
+
+        view.on_timeout = on_timeout
+        public_button.callback = partial(button_press, button_type=discord.ButtonStyle.red)
+        public_button.interaction_check = author_check(ctx.author.id)
+        private_button.callback = partial(button_press, button_type=discord.ButtonStyle.green)
+        private_button.interaction_check = author_check(ctx.author.id)
 
     def get_music_player(self, ctx: commands.Context) -> player.MusicPlayer:
         return self.music_players.get(ctx.guild.id)

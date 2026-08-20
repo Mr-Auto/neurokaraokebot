@@ -75,7 +75,9 @@ class MyBot(commands.Bot):
                 break
 
     async def on_command_error(_, ctx: commands.Context, error: commands.CommandError):
-        if isinstance(error, (commands.CommandNotFound, commands.CheckFailure)):
+        if isinstance(
+            error, (commands.CommandNotFound, commands.CheckFailure, commands.DisabledCommand)
+        ):
             return
 
         if isinstance(error, commands.CommandOnCooldown):

@@ -39,7 +39,7 @@ class UtilityCog(commands.Cog):
     async def commandslist(self, interact: discord.Interaction):
         """List of all ! commands"""
         embed = discord.Embed(title="Command List", color=discord.Color.orange())
-        cmds = [c for c in interact.client.commands if not c.hidden]
+        cmds = [c for c in interact.client.commands if not c.hidden and c.enabled]
         sorted_commands = sorted(
             cmds, key=lambda x: (x.__original_kwargs__.get("priority", 999), x.name)
         )

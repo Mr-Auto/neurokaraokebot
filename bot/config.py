@@ -27,6 +27,7 @@ class API(StrEnum):
     THEMES = _API + "/themes"
     PLAYLISTS = _API + "/playlists"
     COVER_ARTITS = _API + "/filters/cover-artists"
+    FAVORITES = _API + "/favorites/discord"
 
 
 class STORAGE(StrEnum):

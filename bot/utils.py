@@ -56,6 +56,15 @@ async def verify_message(channel: discord.abc.Messageable, message_id: int):
         return None
 
 
+def author_check(owner_id: int):
+    async def check_fun(interact: discord.Interaction):
+        if check := interact.user.id != owner_id:
+            await interact.response.send_message(f"Not your buttons! {EMOTES.SILLY}", ephemeral=True)
+        return not check
+
+    return check_fun
+
+
 class EmotesMetaClass(type):
     @property
     def DINKDONK(cls) -> str:
