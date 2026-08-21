@@ -28,6 +28,7 @@ class API(StrEnum):
     PLAYLISTS = _API + "/playlists"
     COVER_ARTITS = _API + "/filters/cover-artists"
     FAVORITES = _API + "/favorites/discord"
+    SONGS_BY_IDS = "https://api.neurokaraoke.com/public/songs/by-ids"
 
 
 class STORAGE(StrEnum):

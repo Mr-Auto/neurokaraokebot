@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import os
 from datetime import datetime
@@ -156,6 +157,11 @@ class MyBot(commands.Bot):
                 return CustomResponse(None, e.status, f"Unknown HTTP Error({e.status})", url)
             except TimeoutError:
                 return CustomResponse(None, None, "Timeout Error", url)
+            except aiohttp.ContentTypeError as e:
+                return CustomResponse(None, e.status, f"Json error ({e.message})", url)
+            except json.JSONDecodeError as e:
+                log.error(f"fetch_json_data: json decoder error: {e.msg}")
+                return CustomResponse(None, resp.status, f"Json decoder error", url)
             except Exception:
                 log.exception("exception in fetch_json_data")
                 return CustomResponse(None, None, "Unknown Error", url)

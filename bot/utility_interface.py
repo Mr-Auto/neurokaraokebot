@@ -268,57 +268,62 @@ class StatsCog(commands.GroupCog, group_name="stats"):
         top_comparison: str = None,
     ):
         reply = interact.followup.send
-        tasks = [
-            interact.client.fetch_json_data(f"{API.SONGS}/{song_id}") for song_id, _ in top_list
-        ]
-        api_results: list[CustomResponse] = await asyncio.gather(*tasks)
-        for result in api_results:
+        song_ids = [song_id for song_id, _ in top_list]
+        if song_ids:
+            result: CustomResponse = await interact.client.fetch_json_data(
+                API.SONGS_BY_IDS, post=song_ids
+            )
             if result.error is not None:
-                await reply(f"Could not get data for all the songs {EMOTES.SAD}: {result.error}")
-                log.warning(
-                    f"stats songs: Could not get data from {result.url}, status: `{result.status}` error: {result.error}"
-                )
+                await reply(f"Could not get data for the songs {EMOTES.SAD}: {result.error}")
                 return
             if result.status != 200:
                 await reply(
-                    f"Could not get data for all the songs, status code `{result.status}`. {EMOTES.SAD}: {result.error}"
+                    f"Could not get data for songs, status code `{result.status}`. {EMOTES.SAD}"
+                )
+                return
+            if not isinstance(result.json_data, list):
+                await reply(
+                    f"Could not get data for songs, Got wrong result. {EMOTES.SAD}"
                 )
                 log.warning(
-                    f"stats songs: Could not get data from {result.url}, status: `{result.status}` error: {result.error}"
+                    f"send_song_list: Payload {song_ids}, response: {result.json_data}"
                 )
                 return
-            if not result.json_data or not isinstance(result.json_data, dict):
-                await reply(
-                    f"Could not get data for all the songs, Got empty result. {EMOTES.SAD}: {result.error}"
-                )
-                log.warning(f"stats songs: Got empty result from {result.url}")
-                return
-            c_song_id = result.json_data["id"]
-            for idx in range(len(top_list)):
-                if c_song_id == top_list[idx][0]:
-                    if top_comparison is None:
-                        count = top_list[idx][1]
-                    else:
-                        count = top_list[idx][1][top_comparison]
-                    song = player.Song(result.json_data)
-                    top_list[idx] = (count, song)
-                    break
+            for song_data in result.json_data:
+                c_song_id = song_data["id"]
+                for idx in range(len(top_list)):
+                    if c_song_id == top_list[idx][0]:
+                        if top_comparison is None:
+                            count = top_list[idx][1]
+                        else:
+                            count = top_list[idx][1][top_comparison]
+                        song = player.Song(song_data)
+                        top_list[idx] = (song, count)
+                        break
         view = ui.LayoutView(timeout=1)
         container = ui.Container(accent_color=discord.Color.blue())
         container.add_item(ui.TextDisplay(title))
         idx = 1
-        for score, song in top_list:
-            if score != 0:
-                text = ui.TextDisplay(
-                    f"{idx}. [{song.song_name()}]({song.get_url()})\n" f"-# {top_by} {score} times"
-                )
-                url = await song.get_cover_art()
-                if url is None:
-                    container.add_item(text)
+        for song, score in top_list:
+            if not isinstance(score, int):
+                if top_comparison is not None:
+                    score = score[top_comparison]
+            if score is not None and score != 0:
+                if isinstance(song, str):
+                    container.add_item(
+                        ui.TextDisplay(f"{idx}. Unknown song\n-# {top_by} {score} times")
+                    )
                 else:
-                    image = ui.Thumbnail(media=url, description="Cover art")
-                    container.add_item(ui.Section(text, accessory=image))
-                # container.add_item(ui.Separator()) # limits the max to 9
+                    text = ui.TextDisplay(
+                        f"{idx}. [{song.song_name()}]({song.get_url()})\n-# {top_by} {score} times"
+                    )
+                    url = await song.get_cover_art()
+                    if url is None:
+                        container.add_item(text)
+                    else:
+                        image = ui.Thumbnail(media=url, description="Cover art")
+                        container.add_item(ui.Section(text, accessory=image))
+                    # container.add_item(ui.Separator()) # limits the max to 9
                 idx += 1
         view.add_item(container)
         await reply(view=view)
