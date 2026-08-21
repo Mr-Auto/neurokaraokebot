@@ -68,7 +68,8 @@ Sync generally needs to be done once per bot. You may need to run it again after
   *  **Song title as VC status** can be disabled with `!updatestatus on/off`
   *  **View playlist** `!playlist [url/ID/"lofi"]`, will display the playlist in the same view as `!findsong`, allowing to request songs from it. Supports normal playlist, artist page playlist, genres/themes/moods playlist
   *  **View setlist** `!setlist`, will display form with all the available setlists, allowing you to request whole setlist or open it as playlist
-  *  **View your favorites** with `!favorites` command (from neurokaraoke, need account linked), let's you request songs from it just like any other playlist
+  *  **View your favorites** with `!favorites` command (from neurokaraoke, need account linked), let's you request songs from it just like any other playlist.
+Note: this command requires `API_KEY` in the .env file to function, due to privacy reasons, this is kept secret by neurokaraoke owner, if not provided, it will not be listed in the commands list
   *  **Reset bot** `!reconnect` will make the bot reconnect and full reset for this server (clear queue etc.)
   *  **Other self explanatory** `!pause`, `!resume`, `!song`, `!nextsong`, `!skip`, `!queue`
 * **Additional**:
