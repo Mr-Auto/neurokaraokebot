@@ -496,7 +496,7 @@ class MusicCog(commands.Cog):
     @app_commands.command()
     @app_commands.checks.cooldown(1, 5, key=lambda i: i.user.id)
     async def randomsong(self, interact: discord.Interaction):
-        """Random song from neurokaraoke.com"""
+        """Random song from (neuro/evil/twins)karaoke.com"""
         await interact.response.defer()
         repl = interact.followup.send
         response: CustomResponse = await self.bot.fetch_json_data(API.RANDOM)
@@ -725,14 +725,14 @@ class MusicCog(commands.Cog):
     @commands.command(aliases=("favorites", "favourites", "favourite", "fav"))
     @cmd_verify()
     async def favorite(self, ctx: commands.Context):
-        """Allows you to view your favorites from twinskaraoke.com, public or private, you choose (you need to have your discord account linked)"""
+        """Allows you to view your favorites from (neuro/evil/twins)karaoke.com, public or private, you choose (you need to have your discord account linked)"""
         headers = {"X-Api-Key": os.getenv("API_KEY")}
         response: CustomResponse = await self.bot.fetch_json_data(
             f"{API.FAVORITES}/{ctx.author.id}", headers=headers
         )
         if response.status == 404:
             await ctx.reply(
-                f"User not found, you sure you have the discord account linked? {EMOTES.SILLY}"
+                f"User not found, you sure you have the discord account linked on (neuro/evil/twins)karaoke.com? {EMOTES.SILLY}"
             )
             return
         if response.error:
@@ -743,7 +743,9 @@ class MusicCog(commands.Cog):
             return
         json_result = response.json_data
         if not json_result or len(json_result) == 0:
-            await ctx.reply(f"You don't have favorites {EMOTES.SIDE_EYE}")
+            await ctx.reply(
+                f"You don't have favorites on (neuro/evil/twins)karaoke.com {EMOTES.SIDE_EYE}"
+            )
             return
         view = discord.ui.View(timeout=60)
         private_button = discord.ui.Button(label="Private", style=discord.ButtonStyle.green)
