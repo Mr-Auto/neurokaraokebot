@@ -126,6 +126,17 @@ class MusicCog(commands.Cog):
                 f"Connection timeout {EMOTES.SAD}, try again in a minute or two", ephemeral=True
             )
 
+    @commands.command(priority=1)
+    @cmd_verify()
+    async def leavevc(self, ctx: commands.Context):
+        mp = self.get_music_player(ctx)
+        mp.pause()
+        self.error_time[ctx.guild.id] = time.time()
+        self.music_players[ctx.guild.id] = None
+        ctx.voice_client.stop()
+        await ctx.voice_client.disconnect()
+        await ctx.reply(f"Goodbye {EMOTES.SAD}")
+
     @commands.command(priority=2, aliases=("⏸️",))
     @cmd_verify()
     @commands.cooldown(1, 2, commands.BucketType.guild)
