@@ -1,3 +1,4 @@
+import math
 import discord
 import logging
 import time
@@ -100,6 +101,25 @@ class SongLookupView(ui.LayoutView):
         self.message: discord.Message | discord.InteractionMessage = None
         self.name = name
         self.request_messages = {}
+        self.prev_btn = ui.Button(label="Previous", custom_id="prev")
+        self.prev_btn.callback = self.page_callback
+        self.prev_btn.interaction_check = self.author_check
+        self.next_btn = ui.Button(label="Next", custom_id="next")
+        self.next_btn.callback = self.page_callback
+        self.next_btn.interaction_check = self.author_check
+        self.jump_to = ui.Select(placeholder="Jump to page")
+        self.jump_to.callback = self.on_list_select
+        self.jump_to.interaction_check = self.author_check
+        options = [
+            discord.SelectOption(label=str(v + 1))
+            for v in range(min(26, math.ceil(len(self.data) / self.ITEMS_PER_PAGE)))
+        ]
+        if len(options) > 25:
+            options = options[:25]
+            options[-1].label = "25 ▼"
+        self.jump_to.options = options
+        if len(options) < 4:
+            self.jump_to.disabled = True
         self.update_view()  # last
 
     async def on_timeout(self):
@@ -111,8 +131,60 @@ class SongLookupView(ui.LayoutView):
             except discord.NotFound:
                 pass
 
+    async def page_callback(self, interact: discord.Interaction):
+        if interact.data.get("custom_id") == "prev" and self.current_page != 0:
+            self.current_page -= 1
+        else:
+            self.current_page += 1
+        self.update_view()
+        await interact.response.edit_message(view=self)
+
+    async def author_check(self, interact: discord.Interaction):
+        if check := interact.user.id != self.owner_id:
+            await interact.response.send_message(f"Not your buttons! {EMOTES.SILLY}", ephemeral=True)
+        return not check
+
+    async def on_list_select(self, interact: discord.Interaction):
+        await interact.response.defer()
+        choice = self.jump_to.values[0]
+        if "▲" in choice:
+            choice = int(self.jump_to.options[1]) - 1
+        elif "▼" in choice:
+            choice = int(self.jump_to.options[-2]) + 1
+        self.current_page = int(choice) - 1
+        self.update_view()
+        await interact.edit_original_response(view=self)
+
+    def adjust_jump_to_select(self):
+        total_pages = math.ceil(len(self.data) / self.ITEMS_PER_PAGE)
+        if total_pages <= 25:
+            return
+        first_page = self.jump_to.options[0].label
+        if "▲" in first_page:
+            first_page = self.jump_to.options[1].label
+            first_page = int(first_page) - 1
+        first_page = int(first_page) - 1
+        if (self.current_page - first_page < 5 and first_page != 0) or (
+            self.current_page - first_page > 19 and "▼" in self.jump_to.options[-1].label
+        ):
+            start_from = self.current_page - 12
+            if total_pages - start_from < 25:
+                start_from = total_pages - 25
+            if start_from < 0:
+                start_from = 0
+            options = [
+                discord.SelectOption(label=str(v + 1))
+                for v in range(start_from, min(start_from + 25, total_pages))
+            ]
+            if options[0].label != "1":
+                options[0].label = options[0].label + " ▲"
+            if options[-1].label != str(total_pages):
+                options[-1].label = options[-1].label + " ▼"
+            self.jump_to.options = options
+
     def update_view(self, no_page_buttons=False):
         self.clear_items()
+        self.adjust_jump_to_select()
         start = self.current_page * self.ITEMS_PER_PAGE
         end = min(start + self.ITEMS_PER_PAGE, len(self.data))
         container = ui.Container(accent_color=discord.Color.blue())
@@ -125,34 +197,16 @@ class SongLookupView(ui.LayoutView):
                     container.add_item(obj)
             else:
                 container.add_item(item)
-            if idx + 1 != end:
-                container.add_item(ui.Separator())
-
+            # if idx + 1 != end: # looks nice, but it sucks that it counts towards the 40 children limit
+            #     container.add_item(ui.Separator())
+            #     log.warning("separator")
         self.add_item(container)
         if no_page_buttons or len(self.data) <= self.ITEMS_PER_PAGE:
             return
-
-        prev_btn = ui.Button(label="Previous", disabled=(self.current_page == 0))
-        next_btn = ui.Button(label="Next", disabled=(end == len(self.data)))
-
-        async def prev_callback(interact: discord.Interaction):
-            self.current_page -= 1
-            self.update_view()
-            await interact.response.edit_message(view=self)
-
-        async def next_callback(interact: discord.Interaction):
-            self.current_page += 1
-            self.update_view()
-            await interact.response.edit_message(view=self)
-
-        prev_btn.callback = prev_callback
-        prev_btn.interaction_check = author_check(self.owner_id)
-        next_btn.callback = next_callback
-        next_btn.interaction_check = author_check(self.owner_id)
-        action_row = ui.ActionRow()
-        action_row.add_item(prev_btn)
-        action_row.add_item(next_btn)
-        self.add_item(action_row)
+        self.prev_btn.disabled = self.current_page == 0
+        self.next_btn.disabled = end == len(self.data)
+        self.add_item(ui.ActionRow(self.prev_btn, self.next_btn))
+        self.add_item(ui.ActionRow(self.jump_to))
 
     def process_item(self, idx: int) -> ui.Item | list[ui.Item]:
         item = self.data[idx]
