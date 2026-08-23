@@ -226,7 +226,7 @@ class OwnerCog(commands.Cog):
     async def latency(self, ctx: commands.Context):
         message = await ctx.reply(f"Processing {EMOTES.LOADING}")
         latency = self.bot.latency * 1000
-        latency = f"{latency:.2f}ms"
+        latency = f"`{latency:.2f}ms`"
         vc_latency = None
         if ctx.guild.voice_client:
             vc_latency = ctx.guild.voice_client.latency * 1000
