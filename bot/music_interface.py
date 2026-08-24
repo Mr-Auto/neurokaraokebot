@@ -1203,11 +1203,12 @@ class MusicCog(commands.Cog):
                     self.music_players[guild.id] = None
                     await vc.disconnect()
                 continue
-            # includes the bot itself
             undeafened_members = [
-                m for m in vc.channel.members if not (m.voice.self_deaf or m.voice.deaf)
+                m
+                for m in vc.channel.members
+                if not (m.voice.self_deaf or m.voice.deaf) and m.id != self.bot.user.id
             ]
-            if len(undeafened_members) < 2:
+            if len(undeafened_members) < 1:
                 mp.alone_counter += 1
                 if mp.alone_counter > PAUSE_AFTER:
                     vc.pause()
