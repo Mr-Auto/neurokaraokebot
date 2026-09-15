@@ -92,7 +92,7 @@ Sync generally needs to be done once per bot. You may need to run it again after
 | `!updatestatus` | `"yes", "no"` | Enable/disable bot setting voice channel status to the current song name |
 | `!playlist` | `url, ID, "lofi"` | display a playlist in the same view as `!findsong`, allowing to request songs from it. Supports normal playlist, artist page playlist, genres/themes/moods playlist |
 | `!setlist` || View karaoke setlists, allows requests |
-| `!favorites`* || View your favorites from (neuro/evil/twins)karaoke.com, allows requests |
+| `!favorites` || View your favorites from (neuro/evil/twins)karaoke.com, allows requests |
 | `!issue` || Display common issues list | Yes |
 | `!setlistupdates` | `channel, "clear"` \| `ping role (optional` | Sets up new setlist notification (server owner only) | Yes |
 
