@@ -2,6 +2,7 @@ import enum
 import io
 import logging
 import asyncio
+import random
 import aiohttp
 import requests
 import json
@@ -439,12 +440,22 @@ class SwarmFM(Radio):
         return json.dumps(self.data, indent=indent)
 
 
+class CoverArtistFlag(enum.IntFlag):
+    NoFilter = 0
+    Evil = enum.auto()
+    Neuro = enum.auto()
+    NeuroAndEvil = enum.auto()
+    NeuroV1 = enum.auto()
+    NeuroV2 = enum.auto()
+
+
 class MusicPlayer:
     def __init__(self, data: list):
         self.cache = deque()
         self.requests_cache = deque()
         self.alone_counter = 0
         self.update_status = True
+        self.cover_filters: CoverArtistFlag = 0
         self.refill_task: asyncio.Future = None
         self.cache.extend(Song(item) for item in data)
         self.current_song: Song | Radio = self.cache.popleft()
@@ -509,16 +520,65 @@ class MusicPlayer:
             log.exception(f"refill_queue: error during song download:")
 
         if len(self.cache) < MAX_CACHE + 1:
-            response = self.refill_session.get(API.RANDOM, timeout=8)
-            if response.status_code != 200:
-                log.error(f"refill_queue: Random API returned {response.status_code}")
-                return
-            data = response.json()
-            if not isinstance(data, list) or len(data) == 0:
-                log.error("refill_queue: No data in fetched result from the random api")
-                return
-            self.cache.extend(Song(item) for item in data)
+            all_except_V1andV2 = (
+                CoverArtistFlag.Evil | CoverArtistFlag.Neuro | CoverArtistFlag.NeuroAndEvil
+            )
+            neuroV1andV2 = CoverArtistFlag.NeuroV1 | CoverArtistFlag.NeuroV2
+            filter_results = False
+            # fmt: off
+            if (self.cover_filters & all_except_V1andV2) == all_except_V1andV2 and (self.cover_filters & neuroV1andV2) != neuroV1andV2:  # fmt: on
+                post_data = dict(
+                    page=1, pageSize=200, sortBy="KaraokeDate", sortDesc=True, coverArtistIds=[]
+                )
+                if self.cover_filters & CoverArtistFlag.NeuroV1 == 0:
+                    post_data["coverArtistIds"].append(COVER_ARTIST_NEUROV1)
+                if self.cover_filters & CoverArtistFlag.NeuroV2 == 0:
+                    post_data["coverArtistIds"].append(COVER_ARTIST_NEUROV2)
+                response = self.refill_session.post(API.SONGS, json=post_data)
+                if response.status_code != 200:
+                    log.error(f"refill_queue: V1 & V2 lookup returned {response.status_code}")
+                    return
+                data = response.json()
+                if not data or "items" not in data or not data["items"]:
+                    log.error("refill_queue: No data in fetched result from the random api")
+                    return
+                data = data["items"]
+                random.shuffle(data)
+            else:
+                response = self.refill_session.get(API.RANDOM, timeout=8)
+                if response.status_code != 200:
+                    log.error(f"refill_queue: Random API returned {response.status_code}")
+                    return
+                data = response.json()
+                if not isinstance(data, list) or len(data) == 0:
+                    log.error("refill_queue: No data in fetched result from the random api")
+                    return
+                if self.cover_filters != CoverArtistFlag.NoFilter:
+                    filter_results = True
+
+            if filter_results:
+                for item in data:
+                    song = Song(item)
+                    if self.validate_cover(song.cover_artists):
+                        self.cache.append(song)
+            else:
+                self.cache.extend(Song(item) for item in data)
         log.info("refill_queue: done")
+
+    def validate_cover(self, cover_by: str) -> bool:
+        cover_flag = CoverArtistFlag.NoFilter
+        if "Neuro & Evil" == cover_by:
+            cover_flag = CoverArtistFlag.NeuroAndEvil
+        elif "Neuro v1" == cover_by:
+            cover_flag = CoverArtistFlag.NeuroV1
+        elif "Neuro v2" == cover_by:
+            cover_flag = CoverArtistFlag.NeuroV2
+        else:
+            if "Neuro" in cover_by:
+                cover_flag = CoverArtistFlag.Neuro
+            elif "Evil" in cover_by:
+                cover_flag = CoverArtistFlag.Evil
+        return not (self.cover_filters & cover_flag)
 
     def pause(self):
         if self.current_song.has_playback():

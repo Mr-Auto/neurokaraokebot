@@ -1,6 +1,6 @@
 from enum import IntEnum, StrEnum
 
-# Max songs cached, since we use double cache, with requested songs it will be 4 + one currently playing
+# Max songs cached, since we use double cache, with requested songs it can be 4 + one currently playing
 # (2 in random queue and 2 in request queue, assuming there is 2 or more songs requested)
 MAX_CACHE = 2
 # Pause the playback after the bot is left alone in the VC for X minutes
@@ -16,6 +16,9 @@ PROGRESSBAR_LENGTH = 12
 # Url's for linking to the website
 SONG_URL = "https://twinskaraoke.com/song/"
 PLAYLIST_URL = "https://twinskaraoke.com/playlist/"
+# Cover Artists ID for the cover artists filter
+COVER_ARTIST_NEUROV1 = "1f53c5f4-4d18-4073-9256-fd9227059c15"
+COVER_ARTIST_NEUROV2 = "b5f31df3-ae49-46aa-a610-baf327d8ac61"
 
 
 class API(StrEnum):

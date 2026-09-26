@@ -1,23 +1,23 @@
-from functools import partial
 import os
 import re
 import weakref
-import discord
-from discord.ext import commands, tasks
-from discord import app_commands, utils
-import discord.ui
 import logging
 import asyncio
 import time
 import typing
 from itertools import chain, islice
+import discord
+import discord.ui
+from discord.ext import commands, tasks
+from discord import app_commands, utils
 
 import player
 import stats
 import embeds
 from config import *
-from utils import EMOTES, CustomResponse, author_check, emote_for_cover_artist
+from utils import EMOTES, CustomResponse, emote_for_cover_artist
 from song_lookup_view import SongLookupView, RequestButton, SetlistsView
+from filter_view import FilterView
 from favorites_view import FavoritesView
 
 log = logging.getLogger()
@@ -700,6 +700,15 @@ class MusicCog(commands.Cog):
             return
         view = FavoritesView(ctx.author.id, json_result)
         msg = await ctx.reply("Open your favorites playlist as:", view=view)
+        view.msg = msg
+
+    @commands.command(aliases=("filtered", "filter"))
+    @cmd_verify()
+    async def filters(self, ctx: commands.Context):
+        """Opens the filter embed for the random queue"""
+        mp = self.get_music_player(ctx)
+        view = FilterView(mp)
+        msg = await ctx.reply(view=view)
         view.msg = msg
 
     def get_music_player(self, ctx: commands.Context) -> player.MusicPlayer:
