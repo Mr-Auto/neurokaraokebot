@@ -18,6 +18,7 @@ import embeds
 from config import *
 from utils import EMOTES, CustomResponse, author_check, emote_for_cover_artist
 from song_lookup_view import SongLookupView, RequestButton, SetlistsView
+from favorites_view import FavoritesView
 
 log = logging.getLogger()
 
@@ -697,40 +698,9 @@ class MusicCog(commands.Cog):
                 f"You don't have favorites on (neuro/evil/twins)karaoke.com {EMOTES.SIDE_EYE}"
             )
             return
-        view = discord.ui.View(timeout=60)
-        private_button = discord.ui.Button(label="Private", style=discord.ButtonStyle.green)
-        view.add_item(private_button)
-        public_button = discord.ui.Button(label="Public", style=discord.ButtonStyle.red)
-        view.add_item(public_button)
+        view = FavoritesView(ctx.author.id, json_result)
         msg = await ctx.reply("Open your favorites playlist as:", view=view)
-
-        async def on_timeout():
-            private_button.disabled = True
-            public_button.disabled = True
-            try:
-                await msg.edit(view=view)
-            except Exception:
-                pass
-
-        async def button_press(interact: discord.Interaction, button_type: discord.ButtonStyle):
-            playlist_view = SongLookupView(
-                json_result, True, interact.user.id, f"{interact.user.mention} favorites"
-            )
-            if button_type == discord.ButtonStyle.red:
-                view.stop()
-                await interact.response.edit_message(content=None, view=playlist_view)
-                playlist_view.message = interact.message
-            else:
-                await interact.response.send_message(view=playlist_view, ephemeral=True)
-                playlist_view.message = await interact.original_response()
-                await view.on_timeout()
-                view.stop()
-
-        view.on_timeout = on_timeout
-        public_button.callback = partial(button_press, button_type=discord.ButtonStyle.red)
-        public_button.interaction_check = author_check(ctx.author.id)
-        private_button.callback = partial(button_press, button_type=discord.ButtonStyle.green)
-        private_button.interaction_check = author_check(ctx.author.id)
+        view.msg = msg
 
     def get_music_player(self, ctx: commands.Context) -> player.MusicPlayer:
         return self.music_players.get(ctx.guild.id)
@@ -995,7 +965,9 @@ class MusicCog(commands.Cog):
                     self.connecting_to[guild_id] = True
                     vc = await before.channel.connect(reconnect=False, timeout=10)
                 except Exception as e:
-                    log.warning(f"on_voice_state_update: Exception during reconnect ({type(e).__name__}: {e})")
+                    log.warning(
+                        f"on_voice_state_update: Exception during reconnect ({type(e).__name__}: {e})"
+                    )
                     return
                 finally:
                     self.connecting_to[guild_id] = False
