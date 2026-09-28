@@ -123,7 +123,7 @@ class MusicCog(commands.Cog):
         await ctx.voice_client.disconnect()
         await ctx.reply(f"Goodbye {EMOTES.SAD}")
 
-    @commands.command(priority=2, aliases=("⏸️",))
+    @commands.command(priority=2, aliases=("⏸️", "stop"))
     @cmd_verify()
     @commands.cooldown(1, 2, commands.BucketType.guild)
     async def pause(self, ctx: commands.Context):
@@ -138,7 +138,7 @@ class MusicCog(commands.Cog):
                 await self.set_voice_status(vc.channel, mp.current_song.song_name(), True)
         await ctx.guild.change_voice_state(channel=vc.channel, self_mute=True)
 
-    @commands.command(priority=2, aliases=("▶️",))
+    @commands.command(priority=2, aliases=("▶️", "play"))
     @cmd_verify()
     @commands.cooldown(1, 2, commands.BucketType.guild)
     async def resume(self, ctx: commands.Context):
