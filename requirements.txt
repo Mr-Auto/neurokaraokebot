@@ -3,4 +3,4 @@ requests
 aiohttp
 python-dotenv
 ffmpeg
-av>=17.1.0
+av==18.1.0
