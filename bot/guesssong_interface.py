@@ -38,6 +38,7 @@ class GuessSongCog(commands.Cog, group_name="guesssong"):
     REWARDS = [1000, 500, 200, 100, 50]
     NUM_OF_CHOICES = 25  # should not be more then 40, just to be safe
     DEFAULT_LIST = [app_commands.Choice(name="start", value="start")]
+    command_mention = None
 
     async def song_autocomplete(
         self, interact: discord.Interaction, current: str
@@ -115,7 +116,7 @@ class GuessSongCog(commands.Cog, group_name="guesssong"):
             if i < game.state:
                 color = discord.ButtonStyle.red
                 button = ui.Button(label=f"{self.TIMES[i]}s", style=color, disabled=True)
-            if i > game.state:
+            elif i > game.state:
                 button = ui.Button(label=f"{self.TIMES[i]}s", disabled=True)
             elif i == game.state:
                 label = f"{self.TIMES[i]}s"
@@ -142,7 +143,8 @@ class GuessSongCog(commands.Cog, group_name="guesssong"):
                 button.callback = self.button_get_more_time
             view.add_item(button)
         try:
-            msg = f"Guess this song using `/guesssong [name]`\nTimeout <t:{int(time.time()+self.TIMEOUTS[game.state])}:R>"
+            command = await self.get_command_mention()
+            msg = f'Guess this song using {command} "song name"\nTimeout <t:{int(time.time()+self.TIMEOUTS[game.state])}:R>'
             if "file" in inspect.signature(method).parameters:
                 return await method(msg, file=discord_file, view=view)
             else:  # edit
@@ -160,11 +162,11 @@ class GuessSongCog(commands.Cog, group_name="guesssong"):
         if game is None or game.message is None:
             await reply(f"Error: no active game {EMOTES.SILLY}", ephemeral=True)
             return
-        if game.state == len(self.TIMES) - 1:
-            await reply(f"Something went wrong {EMOTES.SILLY}", ephemeral=True)
-            return
         if interact.message.id != game.message.id:
             await reply(f"That's not yours {EMOTES.SILLY}", ephemeral=True)
+            return
+        if game.state == len(self.TIMES) - 1:
+            await reply(f"Something went wrong {EMOTES.SILLY}", ephemeral=True)
             return
         await interact.response.defer()
         game.state += 1
@@ -299,8 +301,9 @@ class GuessSongCog(commands.Cog, group_name="guesssong"):
     async def answer(self, interact: discord.Interaction, song_name: str):
         current_game = self.guesssong_data.get(interact.user.id)
         if current_game is None:
+            command = await self.get_command_mention()
             await interact.response.send_message(
-                f"Game not running {EMOTES.SILLY} use `/guesssong start` first", ephemeral=True
+                f'Game not running {EMOTES.SILLY} use {command} "start" first', ephemeral=True
             )
             return
         if current_game.message.channel.id != interact.channel_id:
@@ -354,3 +357,16 @@ class GuessSongCog(commands.Cog, group_name="guesssong"):
                 task.add_done_callback(self.scheduled_task_done)
                 await self.update_game_message(edit, interact.user.id)
                 await interact.followup.send(f"Wrong {EMOTES.SILLY}, try again", ephemeral=True)
+
+    async def get_command_mention(self):
+        if self.command_mention:
+            return self.command_mention
+
+        api_commands = await self.bot.tree.fetch_commands()
+        target_cmd = discord.utils.get(api_commands, name="guesssong")
+        if target_cmd:
+            log.warning(f"command: {target_cmd.mention}")
+            self.command_mention = target_cmd.mention
+        else:
+            self.command_mention = "`/guesssong`"
+        return self.command_mention
