@@ -449,13 +449,18 @@ class CoverArtistFlag(enum.IntFlag):
     NeuroV2 = enum.auto()
 
 
+g_christmas_songs: set[str] = set()
+g_christmas_songs_fetched = 0
+
+
 class MusicPlayer:
     def __init__(self, data: list):
         self.cache = deque()
         self.requests_cache = deque()
         self.alone_counter = 0
         self.update_status = True
-        self.cover_filters: CoverArtistFlag = 0
+        self.cover_filters = CoverArtistFlag.NoFilter
+        self.christmas_filter = False
         self.refill_task: asyncio.Future = None
         self.cache.extend(Song(item) for item in data)
         self.current_song: Song | Radio = self.cache.popleft()
@@ -520,16 +525,19 @@ class MusicPlayer:
             log.exception(f"refill_queue: error during song download:")
 
         if len(self.cache) < MAX_CACHE + 1:
+            if self.christmas_filter and not self.christmas_songs:
+                self.refresh_christmas_song_list()
             all_except_V1andV2 = (
                 CoverArtistFlag.Evil | CoverArtistFlag.Neuro | CoverArtistFlag.NeuroAndEvil
             )
             neuroV1andV2 = CoverArtistFlag.NeuroV1 | CoverArtistFlag.NeuroV2
             filter_results = False
             # fmt: off
-            if (self.cover_filters & all_except_V1andV2) == all_except_V1andV2 and (self.cover_filters & neuroV1andV2) != neuroV1andV2:  # fmt: on
-                post_data = dict(
-                    page=1, pageSize=200, sortBy="KaraokeDate", sortDesc=True, coverArtistIds=[]
-                )
+            # # For filtering out all except V1 and/or V2 we just get all results and shuffle them
+            if (self.cover_filters & all_except_V1andV2) == all_except_V1andV2 \
+                and (self.cover_filters & neuroV1andV2) != neuroV1andV2:
+                post_data = dict(page=1, pageSize=200, sortBy="KaraokeDate", sortDesc=True, coverArtistIds=[])
+                # fmt: on
                 if self.cover_filters & CoverArtistFlag.NeuroV1 == 0:
                     post_data["coverArtistIds"].append(COVER_ARTIST_NEUROV1)
                 if self.cover_filters & CoverArtistFlag.NeuroV2 == 0:
@@ -540,7 +548,7 @@ class MusicPlayer:
                     return
                 data = response.json()
                 if not data or "items" not in data or not data["items"]:
-                    log.error("refill_queue: No data in fetched result from the random api")
+                    log.error("refill_queue: No data in fetched result from V1 & V2 lookup")
                     return
                 data = data["items"]
                 random.shuffle(data)
@@ -558,12 +566,30 @@ class MusicPlayer:
 
             if filter_results:
                 for item in data:
+                    if self.christmas_filter and item["id"] in g_christmas_songs:
+                        continue
                     song = Song(item)
                     if self.validate_cover(song.cover_artists):
                         self.cache.append(song)
             else:
-                self.cache.extend(Song(item) for item in data)
+                self.cache.extend(
+                    Song(item)
+                    for item in data
+                    if not (self.christmas_filter and item["id"] in g_christmas_songs)
+                )
         log.info("refill_queue: done")
+
+    def refresh_christmas_song_list(self):
+        resp = self.refill_session.get(f"{API.GENRES}/{GENRE_CHRISTMAS}")
+        if resp.status_code != 200:
+            log.error(f"refill_queue: getting christmas genre returned {resp.status_code}")
+            return
+        data = resp.json()
+        if not data or "songs" not in data or not data["songs"]:
+            log.error(f"refill_queue: No data in fetched result from the random api {type(data)}")
+            return
+        self.christmas_songs = {item["id"] for item in data["songs"]}
+        log.info(f"refreshing christmas song list, got {len(self.christmas_songs)} songs")
 
     def validate_cover(self, cover_by: str) -> bool:
         cover_flag = CoverArtistFlag.NoFilter
@@ -606,3 +632,15 @@ class MusicPlayer:
                 self.requests_cache.append(SwarmFM(requested_by))
         self.refill()
         return len(self.requests_cache)
+
+    @property
+    def christmas_songs(self):
+        if (time.time() - g_christmas_songs_fetched) > (24 * 60 * 60):
+            return set()
+        return g_christmas_songs
+
+    @christmas_songs.setter
+    def christmas_songs(self, val):
+        global g_christmas_songs_fetched, g_christmas_songs
+        g_christmas_songs_fetched = time.time()
+        g_christmas_songs = val

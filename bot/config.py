@@ -19,6 +19,8 @@ PLAYLIST_URL = "https://twinskaraoke.com/playlist/"
 # Cover Artists ID for the cover artists filter
 COVER_ARTIST_NEUROV1 = "1f53c5f4-4d18-4073-9256-fd9227059c15"
 COVER_ARTIST_NEUROV2 = "b5f31df3-ae49-46aa-a610-baf327d8ac61"
+# For christmas filter
+GENRE_CHRISTMAS = "567e0131-9861-4405-bff1-81d4e87d7481"
 
 
 class API(StrEnum):
