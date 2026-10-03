@@ -60,11 +60,31 @@ async def verify_message(channel: discord.abc.Messageable, message_id: int):
 
 def author_check(owner_id: int):
     async def check_fun(interact: discord.Interaction):
-        if check := interact.user.id != owner_id:
+        if not await vc_check(interact):
+            return False
+        if interact.user.id != owner_id:
             await interact.response.send_message(f"Not your buttons! {EMOTES.SILLY}", ephemeral=True)
-        return not check
+            return False
+
+        return True
 
     return check_fun
+
+
+async def vc_check(interact: discord.Interaction):
+    if not interact.guild.voice_client or not interact.guild.voice_client.channel:
+        await interact.response.send_message("Bot not in VC", ephemeral=True)
+        return False
+    if (
+        not interact.user.voice
+        or interact.guild.voice_client.channel.id != interact.user.voice.channel.id
+    ):
+        await interact.response.send_message(
+            f"You have to be in VC with the bot to use this! {EMOTES.SILLY}", ephemeral=True
+        )
+        return False
+
+    return True
 
 
 class CoverBy(enum.Enum):

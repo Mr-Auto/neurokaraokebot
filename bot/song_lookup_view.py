@@ -6,7 +6,8 @@ from discord import ui
 from enum import Enum, auto
 from datetime import datetime
 
-from utils import CustomResponse, EMOTES, author_check
+from utils import EMOTES
+import utils
 import stats
 from player import MusicPlayer, Song
 from config import PLAYLIST_URL, API, STORAGE
@@ -29,19 +30,7 @@ class RequestButton(ui.Button):
     def __init__(self, song_data: dict, disabled=False):
         super().__init__(label="Request", style=discord.ButtonStyle.primary, disabled=disabled)
         self.song_data = song_data
-
-    async def interaction_check(self, interact: discord.Interaction):
-        if not interact.guild.voice_client:
-            await interact.response.send_message("Bot not in VC", ephemeral=True)
-            return False
-        if (
-            not interact.user.voice
-            or interact.user.voice.channel.id != interact.guild.voice_client.channel.id
-        ):
-            await interact.response.send_message("You have to be in VC to use this!", ephemeral=True)
-            return False
-
-        return True
+        self.interaction_check = utils.vc_check
 
     async def callback(self, interact: discord.Interaction):
         self.song_data["_requested"] = True
@@ -97,19 +86,19 @@ class SongLookupView(ui.LayoutView):
         self.data = data
         self.current_page = 0
         self.request_allowed = request_allowed
-        self.owner_id = owner_id
         self.message: discord.Message | discord.InteractionMessage = None
         self.name = name
         self.request_messages = {}
         self.prev_btn = ui.Button(label="Previous", custom_id="prev")
         self.prev_btn.callback = self.page_callback
-        self.prev_btn.interaction_check = self.author_check
+        author_check_cb = utils.author_check(owner_id)
+        self.prev_btn.interaction_check = author_check_cb
         self.next_btn = ui.Button(label="Next", custom_id="next")
         self.next_btn.callback = self.page_callback
-        self.next_btn.interaction_check = self.author_check
+        self.next_btn.interaction_check = author_check_cb
         self.jump_to = ui.Select(placeholder="Jump to page")
         self.jump_to.callback = self.on_list_select
-        self.jump_to.interaction_check = self.author_check
+        self.jump_to.interaction_check = author_check_cb
         options = [
             discord.SelectOption(label=str(v + 1))
             for v in range(min(26, math.ceil(len(self.data) / self.ITEMS_PER_PAGE)))
@@ -138,11 +127,6 @@ class SongLookupView(ui.LayoutView):
             self.current_page += 1
         self.update_view()
         await interact.response.edit_message(view=self)
-
-    async def author_check(self, interact: discord.Interaction):
-        if check := interact.user.id != self.owner_id:
-            await interact.response.send_message(f"Not your buttons! {EMOTES.SILLY}", ephemeral=True)
-        return not check
 
     async def on_list_select(self, interact: discord.Interaction):
         await interact.response.defer()
@@ -268,7 +252,7 @@ class SetlistButton(ui.Button):
 
     async def callback(self, interact: discord.Interaction):
         await interact.response.defer()
-        response: CustomResponse = await interact.client.fetch_json_data(
+        response: utils.CustomResponse = await interact.client.fetch_json_data(
             f"{API.PLAYLIST}/{self.data['id']}", headers={"x-guest-id": "69"}
         )
         if response.error:
