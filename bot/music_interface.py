@@ -707,7 +707,7 @@ class MusicCog(commands.Cog):
     @cmd_verify()
     @commands.cooldown(1, 60, commands.BucketType.guild)
     async def filters(self, ctx: commands.Context):
-        """Opens the filter embed for the random queue"""
+        """Opens the filters menu for the random queue"""
         mp = self.get_music_player(ctx)
         view = FilterView(mp)
         msg = await ctx.reply(view=view)

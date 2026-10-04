@@ -93,12 +93,13 @@ Sync generally needs to be done once per bot. You may need to run it again after
 | `!playlist` | `url, ID, "lofi"` | display a playlist in the same view as `!findsong`, allowing to request songs from it. Supports normal playlist, artist page playlist, genres/themes/moods playlist |
 | `!setlist` || View karaoke setlists, allows requests |
 | `!favorites`* || View your favorites from (neuro/evil/twins)karaoke.com, allows requests |
+| `!filter` || Open filter menu, allowing to select what covers or themes should be excluded from the random queue (request will still play regardless) |
 | `!issue` || Display common issues list | Yes |
 | `!setlistupdates` | `channel, "clear"` \| `ping role (optional` | Sets up new setlist notification (server owner only) | Yes |
 
 \* This command requires `API_KEY` in the .env file to function. Due to privacy reasons, this is kept secret by neurokaraoke owner, if not provided, the command will not work and will not be listed in the commands list
 
-\*\* General use commands that do not require you to be in a voice channel. Note: Behavior may vary slightly if used while connected to voice
+\*\* General use commands that do not require you to be in a voice channel. Note: Behavior may vary slightly if used while connected to voice channel with the bot
 
 #### **Bot owner commands:**
 | Command | Params | Description |
