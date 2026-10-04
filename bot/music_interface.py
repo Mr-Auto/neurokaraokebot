@@ -57,6 +57,7 @@ class MusicCog(commands.Cog):
         self.connecting_to = {}
         if os.getenv("API_KEY") is None:
             self.favorite.enabled = False
+        self.vc_crash_count = {}
 
     async def cog_unload(self):
         self.check_alone_status.cancel()
@@ -1037,11 +1038,16 @@ class MusicCog(commands.Cog):
     async def check_alone_status(self):
         for guild in self.bot.guilds:
             mp = self.music_players.get(guild.id)
-            if not mp:
-                continue
             vc = guild.voice_client
+            if not mp:
+                if vc:
+                    vc.disconnect()
+                continue
             if not vc:
                 log.warning(f"Bot has MusicPlayer but it's not in VC rn {guild.name}[{guild.id}]")
+                self.vc_crash_count[guild.id] = self.vc_crash_count.get(guild.id, 0) + 1
+                if self.vc_crash_count[guild.id] > 5:
+                    self.music_players[guild.id] = None
                 mp.pause()
                 await guild.change_voice_state(channel=None)
                 continue
