@@ -1,7 +1,7 @@
 import discord
 from discord import ui
 from utils import author_check
-from song_lookup_view import SongLookupView
+from .song_lookup import SongLookupView
 
 
 class FavoritesButton(ui.Button):

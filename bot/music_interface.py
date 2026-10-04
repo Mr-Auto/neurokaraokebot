@@ -16,9 +16,7 @@ import stats
 import embeds
 from config import *
 from utils import EMOTES, CustomResponse, emote_for_cover_artist
-from song_lookup_view import SongLookupView, RequestButton, SetlistsView
-from filter_view import FilterView
-from favorites_view import FavoritesView
+from views import RequestButton, SetlistsView, FilterView, FavoritesView, SongLookupView
 
 log = logging.getLogger()
 
