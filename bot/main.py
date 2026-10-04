@@ -12,10 +12,10 @@ from discord.ext import commands
 
 import stats
 import embeds
-from music_interface import MusicCog, NotAllowedError
-from owner_interface import OwnerCog
-from utility_interface import UtilityCog
-from guesssong_interface import GuessSongCog
+from interfaces.music import MusicCog, NotAllowedError
+from interfaces.owner import OwnerCog
+from interfaces.utility import UtilityCog
+from interfaces.guesssong import GuessSongCog
 from utils import MyTimedRotatingFileHandler, CustomResponse, EMOTES
 
 log = logging.getLogger()
